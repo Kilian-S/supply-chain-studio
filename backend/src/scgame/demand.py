@@ -75,7 +75,7 @@ def build_orders(scenario: Scenario, seed: int | None = None) -> list[Order]:
         totals = daily_totals(spec, region.name)
         for day in range(start, end + 1):
             sizes = split_into_orders(totals.get(day, 0), spec, rng)
-            times = sorted(day + rng.random() for _ in sizes)
+            times = sorted(day - 1 + rng.random() for _ in sizes)  # day d covers [d - 1, d)
             orders.extend(Order(t, region.id, q) for t, q in zip(times, sizes))
     orders.sort(key=lambda o: (o.time, o.region))
     return orders

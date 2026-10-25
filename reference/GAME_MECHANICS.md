@@ -76,6 +76,30 @@ notes override these. Our app makes every cost a scenario parameter.
 - Building a factory asks for total capacity; a warehouse needs no parameters.
 - Data plots record state changes at fractional-day timestamps (events), not daily snapshots.
 
+## Confirmed from the Run 3 downloads (history, demand, lost demand, cash, cash status)
+- **Day convention:** the game labels a day by its end. "Day 731" covers time 730 to 731; the cash
+  shown for day d is the cash at time d. Play runs from time 730.0 to 1460.0.
+- **Market permissions:** "Satisfy demand in X from warehouse Y: allow/block" per customer region and
+  warehouse. At the start the home warehouse serves only the home market; a newly built warehouse
+  serves every region until blocked.
+- **Capacity changes** are entered as the new total capacity; fractional values are allowed (85.04).
+- **Default fulfilment policy** is changed to nearest on day 731.61 in our log; the default before is unknown.
+- **Real demand vs our G4 files:** the G4 demand files for Sorange, Tyran, Entworpe and Fardo after
+  day 730 were synthetic (from `multi_region_demand_simulator.py`). Only Calopeia was real. The real
+  series is now `reference/data/run3_live_demand.xlsx` and `scenarios/data/classic_demand.csv`.
+- **Cash statement** (whole game, from $5M at day 0) in `reference/data/run3_live_cash_status.csv`;
+  holding is reported separately for warehouses and the pipeline (in transit).
+
+## Engine verification (October 2026)
+Replaying all 1,770 real decisions at their exact times on the real demand
+(`backend/verification/run3_history_replay.py`, regression test `tests/test_run3_replay.py`):
+- every decision accepted; cash within $1k of the live game on almost every day up to day 800;
+- final cash $26.38M vs $25.95M live (+1.6%, five seeds, sd $33k); capacity spend within $842;
+- remaining gap: order times within a day are random in our rebuild, so batches and big orders
+  shift by a day; the replayed order points then meet slightly different stock levels, and the
+  paths drift (most visibly in the endgame, where we lose about 450 Entworpe drums the live game
+  served).
+
 ## What the G4 code tells us (G4_automation, final version)
 - `network_engine.py`: daily-step simulator; arrivals, then fulfilment (nearest by cost), then batch
   completion and shipping, then reorder checks, then finance. Holding charged on warehouse stock only

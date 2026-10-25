@@ -1,0 +1,12 @@
+item,amount,note
+starting_cash,5000000.00,day 0 (the game self-plays days 0-730 before teams take over)
+revenues,207203550.00,
+interest,1965193.40,
+add_capacity,-6501158.13,all in the play window (replay pays 6502000)
+production,-143625500.00,
+fgi_holding,-1252756.73,finished goods in warehouses
+pipeline_holding,-223287.67,drums in transit
+add_warehouses,-300000.00,
+outbound_shipping,-22793500.00,customer fulfilment
+inbound_shipping,-13520000.00,factory to warehouse
+cash_balance,25952540.87,day 1460

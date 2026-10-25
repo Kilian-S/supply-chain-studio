@@ -80,7 +80,8 @@
     ],
     "buildable_regions": null,
     "allow_capacity_additions": true,
-    "cash_check_on_production": true
+    "cash_check_on_production": true,
+    "new_warehouse_serves_all": true
   },
   "demand": {
     "Calopeia": {
@@ -125,7 +126,8 @@
     "warehouses": [
       {
         "region": 1,
-        "inventory": 2528
+        "inventory": 2528,
+        "serves": null
       }
     ],
     "routes": [
@@ -143,7 +145,7 @@
     "fulfilment_policy": "nearest"
   },
   "timeline": {
-    "start_day": 730,
+    "start_day": 731,
     "end_day": 1460
   },
   "seed": 0
