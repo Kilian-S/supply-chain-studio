@@ -27,11 +27,11 @@ def make(cash=10_000_000, factories=((A, 10),), warehouses=((A, 0),), routes=(),
         start=StartState(
             cash=cash,
             factories=[StartFactory(region=r, capacity=c) for r, c in factories],
-            warehouses=[StartWarehouse(region=r, inventory=i) for r, i in warehouses],
+            warehouses=[StartWarehouse(region=r, inventory=i, serves=[A, B, ISLAND]) for r, i in warehouses],
             routes=[StartRoute(factory_region=f, warehouse_region=w, settings=RouteSettings(**s)) for f, w, s in routes],
             fulfilment_policy=policy,
         ),
-        timeline=Timeline(start_day=DAY, end_day=end_day),
+        timeline=Timeline(start_day=DAY + 1, end_day=end_day),  # first day covers [DAY, DAY + 1)
     )
 
 
@@ -64,7 +64,7 @@ def test_wip_does_not_count_towards_inventory_position():
 def test_truck_arrives_after_seven_days_mail_after_one():
     for mode, days in (("truck", 7), ("mail", 1)):
         e = Engine(make(routes=[(A, A, route(0, 10, mode))]), orders=[])  # 10 drums: 1 day
-        e.run(until_day=DAY + days)  # completes at 731, arrives at 731 + days
+        e.run(until_day=DAY + days + 1)  # completes at DAY + 1, arrives at DAY + 1 + days
         assert e.warehouses[A].on_hand == 0
         e.step_day()
         assert e.warehouses[A].on_hand == 10
@@ -175,7 +175,7 @@ def test_build_factory_costs_and_comes_online_after_90_days():
     e.build_factory(B, 20)
     assert e.cash == pytest.approx(10_000_000 - 500_000 - 20 * 50_000)
     e.set_route(B, B, order_point=100, quantity=20)
-    e.run(until_day=DAY + 89)
+    e.run(until_day=DAY + 90)
     assert e.factories[B].batch is None and e.factories[B].capacity == 0
     e.step_day()
     assert e.factories[B].capacity == 20 and e.factories[B].batch is not None
@@ -188,7 +188,7 @@ def test_capacity_addition_and_limits():
         e.add_capacity(A, -1)
     with pytest.raises(DecisionError):
         e.build_factory(A, 10)  # one factory per region
-    e.run(until_day=DAY + 90)
+    e.run(until_day=DAY + 91)
     assert e.factories[A].capacity == 15
 
 
@@ -213,3 +213,39 @@ def test_runs_are_deterministic_for_a_seed():
     # Daily demand totals equal the recorded series whatever the seed.
     c = Engine(sc, seed=4); c.run()
     assert [r.demand for r in a.records] == [r.demand for r in c.records]
+
+
+# --- market permissions and capacity totals (from the Run 3 history) ---------------------------
+
+def test_blocked_market_is_not_served():
+    e = Engine(make(warehouses=((A, 100),)), orders=[Order(DAY + 0.2, B, 5), Order(DAY + 0.6, B, 5)])
+    e.set_service(B, A, allowed=False)
+    e.advance_to(DAY + 0.5)
+    assert e.records == [] and e.warehouses[A].on_hand == 100  # first order lost
+    e.set_service(B, A, allowed=True)  # decision taken mid-day
+    e.step_day()
+    assert e.records[0].lost[B] == 5 and e.records[0].fulfilled[B] == 5
+
+
+def test_start_warehouse_serves_only_home_market_by_default():
+    sc = make(warehouses=((A, 100),))
+    sc.start.warehouses[0].serves = None
+    e = Engine(sc, orders=[Order(DAY + 0.5, B, 5), Order(DAY + 0.5, A, 5)])
+    e.step_day()
+    assert e.records[0].lost[B] == 5 and e.records[0].fulfilled[A] == 5
+
+
+def test_new_warehouse_serves_all_regions():
+    e = Engine(make(), orders=[])
+    e.build_warehouse(ISLAND)
+    assert {(ISLAND, A), (ISLAND, B), (ISLAND, ISLAND)} <= e.serves
+
+
+def test_set_capacity_takes_the_new_total():
+    e = Engine(make(warehouses=((A, 0),)), orders=[])
+    e.set_capacity(B, 17)          # no factory yet: build one with 17
+    e.set_capacity(B, 20)          # then add 3 more
+    e.set_capacity(A, 10.5)        # existing factory at 10: add 0.5
+    assert e.cash == pytest.approx(10_000_000 - (500_000 + 17 * 50_000) - 3 * 50_000 - 0.5 * 50_000)
+    e.run(until_day=DAY + 91)
+    assert e.factories[B].capacity == 20 and e.factories[A].capacity == 10.5

@@ -1,6 +1,8 @@
 """Discrete-event simulation of the supply chain game.
 
-Time is continuous in days; day d covers [d, d + 1). The player acts between days (the clock is
+Time is continuous in days. As in the original game, day d covers [d - 1, d): the game labels a day
+by its end, so "day 731" is the first day after time 730 and the cash shown for day d is the cash at
+time d. The player acts between days (the clock is
 player-controlled); everything inside a day is driven by events: customer orders, batch completions,
 shipment arrivals and facilities coming online.
 
@@ -147,7 +149,7 @@ class Engine:
         self.rules = scenario.rules
         self.seed = scenario.seed if seed is None else seed
         self.day = scenario.timeline.start_day
-        self.t = float(self.day)
+        self.t = float(self.day - 1)
         self.cash = scenario.start.cash
         self.policy = scenario.start.fulfilment_policy
         self.finished = False
@@ -163,6 +165,10 @@ class Engine:
         }
         self.routes: dict[tuple[int, int], RouteSettings] = {
             (r.factory_region, r.warehouse_region): r.settings.model_copy() for r in scenario.start.routes
+        }
+        # (warehouse region, customer region) pairs the player allows ("satisfy demand in X from Y").
+        self.serves: set[tuple[int, int]] = {
+            (w.region, c) for w in scenario.start.warehouses for c in (w.serves or [w.region])
         }
 
         self._events: list[tuple[float, int, int, Any]] = []
@@ -185,11 +191,8 @@ class Engine:
         """Simulate the current day to its end and return its record."""
         if self.finished:
             raise RuntimeError("the run has finished")
-        end = float(self.day + 1)
-        while self._events and self._events[0][0] < end:
-            time, rank, _, payload = heapq.heappop(self._events)
-            self._advance(time)
-            self._handle(rank, payload)
+        end = float(self.day)
+        self._process_until(end)
         self._advance(end)
         record = self._close_day()
         self.day += 1
@@ -199,6 +202,19 @@ class Engine:
             self._today = DayRecord(day=self.day)
             self._check_factories()
         return record
+
+    def advance_to(self, time: float) -> None:
+        """Move the clock to `time` within the current day, e.g. to replay a decision taken mid-day."""
+        if not self.day - 1 <= time < self.day:
+            raise ValueError(f"time {time} is outside the current day {self.day}")
+        self._process_until(time)
+        self._advance(time)
+
+    def _process_until(self, end: float) -> None:
+        while self._events and self._events[0][0] < end:
+            time, rank, _, payload = heapq.heappop(self._events)
+            self._advance(time)
+            self._handle(rank, payload)
 
     def run(self, until_day: int | None = None, bot: Callable[[Engine], None] | None = None) -> None:
         """Step until the end of `until_day` (default: the last day). `bot` acts before each day."""
@@ -221,6 +237,8 @@ class Engine:
             "build_factory": self.build_factory,
             "add_capacity": self.add_capacity,
             "build_warehouse": self.build_warehouse,
+            "set_capacity": self.set_capacity,
+            "set_service": self.set_service,
         }.get(decision["kind"])
         if handler is None:
             raise DecisionError(f"unknown decision kind {decision['kind']!r}")
@@ -267,6 +285,26 @@ class Engine:
         self._push(online, _ONLINE, ("capacity", region, capacity))
         self._log("build_factory", region=region, capacity=capacity, cost=cost)
 
+    def set_capacity(self, region: int, total: float) -> None:
+        """The original's "schedule factory capacity change": build a factory, or add up to `total`."""
+        if region not in self.factories:
+            self.build_factory(region, total)
+            return
+        f = self.factories[region]
+        scheduled = f.capacity + sum(amount for _, amount in f.pending_capacity)
+        self.add_capacity(region, total - scheduled)
+
+    def set_service(self, region: int, warehouse: int, allowed: bool) -> None:
+        """Allow or block the warehouse in `warehouse` from serving customers in `region`."""
+        self.scenario.region(region)
+        if warehouse not in self.warehouses:
+            raise DecisionError(f"no warehouse in region {warehouse}")
+        if allowed:
+            self.serves.add((warehouse, region))
+        else:
+            self.serves.discard((warehouse, region))
+        self._log("set_service", region=region, warehouse=warehouse, allowed=allowed)
+
     def add_capacity(self, region: int, amount: float) -> None:
         if not self.rules.allow_capacity_additions:
             raise DecisionError("capacity additions are not allowed in this scenario")
@@ -289,6 +327,8 @@ class Engine:
         self._pay_capex(cost)
         online = self.t + self.econ.warehouse_build_days
         self.warehouses[region] = WarehouseState(region=region, online_at=online)
+        if self.rules.new_warehouse_serves_all:
+            self.serves |= {(region, r.id) for r in self.scenario.regions}
         self._push(online, _ONLINE, ("warehouse", region, None))
         self._log("build_warehouse", region=region, cost=cost)
 
@@ -401,7 +441,8 @@ class Engine:
     # --- fulfilment -----------------------------------------------------------------------------
 
     def _fulfilment_rank(self, region: int) -> list[WarehouseState]:
-        live = [w for w in self.warehouses.values() if w.operational(self.t)]
+        live = [w for w in self.warehouses.values()
+                if w.operational(self.t) and (w.region, region) in self.serves]
         return sorted(live, key=lambda w: (self.scenario.lane(w.region, region).mail_cost_per_drum, w.region))
 
     def _allocate(self, region: int, quantity: int, deadline: float) -> int:

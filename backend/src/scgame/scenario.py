@@ -78,6 +78,8 @@ class Rules(BaseModel):
     allow_capacity_additions: bool = True
     # Production only starts if cash covers production and shipping.
     cash_check_on_production: bool = True
+    # A newly built warehouse may serve every region until the player blocks some.
+    new_warehouse_serves_all: bool = True
 
 
 class RecordedDemand(BaseModel):
@@ -113,6 +115,9 @@ class StartFactory(BaseModel):
 class StartWarehouse(BaseModel):
     region: int
     inventory: int = 0
+    # Customer regions this warehouse may serve at the start. None means its own region only
+    # (the company starts by selling only to its home market).
+    serves: list[int] | None = None
 
 
 class StartRoute(BaseModel):
@@ -130,8 +135,9 @@ class StartState(BaseModel):
 
 
 class Timeline(BaseModel):
-    # Day d covers simulated time [d, d + 1). Play runs from the start of start_day to the end of end_day.
-    start_day: int = 730
+    # Day d covers simulated time [d - 1, d), as in the original game. Play runs from the start of
+    # start_day to the end of end_day; the classic game is played from time 730 to time 1460.
+    start_day: int = 731
     end_day: int = 1460
 
 
