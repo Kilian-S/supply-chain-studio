@@ -1,0 +1,150 @@
+{
+  "id": "classic-network-imperial-notes",
+  "name": "Classic network (course notes costs)",
+  "description": "As the classic network, with the production and holding costs printed in the Imperial course notes ($2,000 + $900 per drum, $90 holding), which differ from what the live game charged.",
+  "regions": [
+    {
+      "id": 1,
+      "name": "Calopeia",
+      "landmass": "continent",
+      "outline": null
+    },
+    {
+      "id": 2,
+      "name": "Sorange",
+      "landmass": "continent",
+      "outline": null
+    },
+    {
+      "id": 3,
+      "name": "Tyran",
+      "landmass": "continent",
+      "outline": null
+    },
+    {
+      "id": 4,
+      "name": "Entworpe",
+      "landmass": "continent",
+      "outline": null
+    },
+    {
+      "id": 5,
+      "name": "Fardo",
+      "landmass": "island",
+      "outline": null
+    }
+  ],
+  "lanes": {
+    "same_region": {
+      "truck_cost": 15000.0,
+      "truck_days": 7.0,
+      "mail_cost_per_drum": 150.0,
+      "mail_days": 1.0
+    },
+    "same_landmass": {
+      "truck_cost": 20000.0,
+      "truck_days": 7.0,
+      "mail_cost_per_drum": 200.0,
+      "mail_days": 1.0
+    },
+    "cross_water": {
+      "truck_cost": 45000.0,
+      "truck_days": 14.0,
+      "mail_cost_per_drum": 400.0,
+      "mail_days": 2.0
+    }
+  },
+  "economics": {
+    "price_per_drum": 1450.0,
+    "batch_fixed_cost": 2000.0,
+    "unit_cost": 900.0,
+    "holding_cost_per_drum_year": 90.0,
+    "holding_cost_in_transit": true,
+    "interest_rate_annual": 0.1,
+    "interest_compounding": "nominal",
+    "capacity_cost_per_unit": 50000.0,
+    "factory_build_cost": 500000.0,
+    "factory_build_days": 90.0,
+    "capacity_build_days": 90.0,
+    "warehouse_build_cost": 100000.0,
+    "warehouse_build_days": 60.0,
+    "truck_capacity": 200
+  },
+  "rules": {
+    "lost_sale_window_days": 1.0,
+    "max_factories_per_region": 1,
+    "max_warehouses_per_region": 1,
+    "allowed_policies": [
+      "nearest",
+      "soonest"
+    ],
+    "buildable_regions": null,
+    "allow_capacity_additions": true,
+    "cash_check_on_production": true
+  },
+  "demand": {
+    "Calopeia": {
+      "kind": "recorded",
+      "csv": "data/classic_demand.csv",
+      "mean_order_size": 7.5,
+      "fixed_order_size": null
+    },
+    "Sorange": {
+      "kind": "recorded",
+      "csv": "data/classic_demand.csv",
+      "mean_order_size": 8.0,
+      "fixed_order_size": null
+    },
+    "Tyran": {
+      "kind": "recorded",
+      "csv": "data/classic_demand.csv",
+      "mean_order_size": 8.0,
+      "fixed_order_size": null
+    },
+    "Entworpe": {
+      "kind": "recorded",
+      "csv": "data/classic_demand.csv",
+      "mean_order_size": 7.5,
+      "fixed_order_size": 250
+    },
+    "Fardo": {
+      "kind": "recorded",
+      "csv": "data/classic_demand.csv",
+      "mean_order_size": 8.0,
+      "fixed_order_size": null
+    }
+  },
+  "start": {
+    "cash": 6796510.0,
+    "factories": [
+      {
+        "region": 1,
+        "capacity": 70.0
+      }
+    ],
+    "warehouses": [
+      {
+        "region": 1,
+        "inventory": 2528
+      }
+    ],
+    "routes": [
+      {
+        "factory_region": 1,
+        "warehouse_region": 1,
+        "settings": {
+          "order_point": 500,
+          "quantity": 250,
+          "mode": "truck",
+          "priority": 0
+        }
+      }
+    ],
+    "fulfilment_policy": "nearest"
+  },
+  "timeline": {
+    "start_day": 730,
+    "end_day": 1460
+  },
+  "seed": 0
+}
