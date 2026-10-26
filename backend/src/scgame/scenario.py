@@ -42,12 +42,24 @@ class LaneTerms(BaseModel):
     mail_days: float
 
 
+Point = tuple[float, float]
+
+
+class RegionMap(BaseModel):
+    """Map geometry in a 1000 x 700 design space. Used only by the front end."""
+
+    outline: list[Point]
+    label: Point
+    factory: Point
+    warehouse: Point
+    headquarters: Point | None = None
+
+
 class Region(BaseModel):
     id: int
     name: str
     landmass: str = "continent"
-    # Optional map outline in a 0-1000 x 0-700 design space, used only by the front end.
-    outline: list[tuple[float, float]] | None = None
+    map: RegionMap | None = None
 
 
 class Economics(BaseModel):

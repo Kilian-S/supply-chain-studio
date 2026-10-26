@@ -10,18 +10,40 @@ import sys
 from pathlib import Path
 
 from .scenario import (
-    Economics, LaneTerms, LaneTier, RecordedDemand, Region, RouteSettings, Rules, Scenario,
+    Economics, LaneTerms, LaneTier, RecordedDemand, Region, RegionMap, RouteSettings, Rules, Scenario,
     StartFactory, StartRoute, StartState, StartWarehouse,
 )
 
 CALOPEIA, SORANGE, TYRAN, ENTWORPE, FARDO = 1, 2, 3, 4, 5
 
+def _map(outline, label, factory, warehouse, headquarters=None) -> RegionMap:
+    """Our own drawing of the classic continent, scaled from a 900 x 640 sketch to 1000 x 700."""
+    def s(p):
+        return (round(p[0] * 1000 / 900, 1), round(p[1] * 700 / 640, 1))
+    return RegionMap(outline=[s(p) for p in outline], label=s(label), factory=s(factory),
+                     warehouse=s(warehouse), headquarters=s(headquarters) if headquarters else None)
+
+
 CLASSIC_REGIONS = [
-    Region(id=CALOPEIA, name="Calopeia"),
-    Region(id=SORANGE, name="Sorange"),
-    Region(id=TYRAN, name="Tyran"),
-    Region(id=ENTWORPE, name="Entworpe"),
-    Region(id=FARDO, name="Fardo", landmass="island"),
+    Region(id=CALOPEIA, name="Calopeia", map=_map(
+        [(118, 128), (170, 92), (250, 78), (330, 96), (410, 92), (430, 196), (478, 300), (306, 338),
+         (138, 302), (114, 220)],
+        label=(255, 150), factory=(230, 250), warehouse=(340, 235), headquarters=(170, 180))),
+    Region(id=SORANGE, name="Sorange", map=_map(
+        [(410, 92), (480, 74), (570, 70), (650, 84), (718, 104), (748, 150), (742, 226), (612, 250),
+         (478, 300), (430, 196)],
+        label=(575, 125), factory=(530, 190), warehouse=(650, 185))),
+    Region(id=TYRAN, name="Tyran", map=_map(
+        [(612, 250), (742, 226), (770, 300), (768, 392), (744, 456), (706, 500), (640, 516), (566, 522),
+         (520, 500), (486, 476), (478, 300)],
+        label=(625, 440), factory=(560, 350), warehouse=(670, 355))),
+    Region(id=ENTWORPE, name="Entworpe", map=_map(
+        [(138, 302), (306, 338), (478, 300), (486, 476), (420, 486), (340, 474), (262, 452), (198, 420),
+         (160, 368)],
+        label=(320, 435), factory=(280, 375), warehouse=(400, 375))),
+    Region(id=FARDO, name="Fardo", landmass="island", map=_map(
+        [(64, 486), (118, 470), (160, 492), (170, 548), (132, 590), (80, 594), (52, 556)],
+        label=(108, 615), factory=(95, 515), warehouse=(130, 560))),
 ]
 
 CLASSIC_LANES = {
