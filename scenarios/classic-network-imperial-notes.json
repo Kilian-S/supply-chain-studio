@@ -2,6 +2,7 @@
   "id": "classic-network-imperial-notes",
   "name": "Classic network (course notes costs)",
   "description": "As the classic network, with the production and holding costs printed in the Imperial course notes ($2,000 + $900 per drum, $90 holding), which differ from what the live game charged.",
+  "standard": true,
   "regions": [
     {
       "id": 1,
@@ -419,5 +420,6 @@
     "start_day": 731,
     "end_day": 1460
   },
+  "events": [],
   "seed": 0
 }

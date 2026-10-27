@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 from .scenario import (
-    Economics, LaneTerms, LaneTier, RecordedDemand, Region, RegionMap, RouteSettings, Rules, Scenario,
+    Economics, Event, LaneTerms, LaneTier, RecordedDemand, Region, RegionMap, RouteSettings, Rules, Scenario,
     StartFactory, StartRoute, StartState, StartWarehouse,
 )
 
@@ -110,20 +110,64 @@ def one_region(csv: str) -> Scenario:
     )
 
 
+def _variant(base: Scenario, id_: str, name: str, description: str, *events: Event) -> Scenario:
+    return base.model_copy(update={"id": id_, "name": name, "description": description, "events": list(events)})
+
+
 def standard_scenarios(csv: str) -> list[Scenario]:
-    return [
-        classic_network(
-            csv, LIVE_ECONOMICS, "classic-network", "Classic network",
-            "Five regions, one factory and warehouse in Calopeia at the start, as in the Imperial 2026 "
-            "network run, with the costs the live game charged.",
-        ),
+    classic = classic_network(
+        csv, LIVE_ECONOMICS, "classic-network", "Classic network",
+        "Five regions, one factory and warehouse in Calopeia at the start, as in the Imperial 2026 "
+        "network run, with the costs the live game charged.",
+    )
+    scenarios = [
+        classic,
         classic_network(
             csv, IMPERIAL_NOTES_ECONOMICS, "classic-network-imperial-notes", "Classic network (course notes costs)",
             "As the classic network, with the production and holding costs printed in the Imperial course "
             "notes ($2,000 + $900 per drum, $90 holding), which differ from what the live game charged.",
         ),
         one_region(csv),
+        _variant(
+            classic, "demand-shock", "Demand shock",
+            "The classic network, but one year in, demand falls 30% in every region, without warning.",
+            Event(id="shock", name="Demand falls 30%", kind="demand", start_day=1096, factor=0.7,
+                  visibility="surprise", description="A recession hits all markets."),
+        ),
+        _variant(
+            classic, "boom", "Boom in Sorange",
+            "The laminate market in Sorange takes off: its demand doubles over the play window. Announced in advance.",
+            Event(id="boom", name="Sorange doubles", kind="demand", start_day=800, end_day=1430, ramp_days=630,
+                  factor=2.0, regions=[SORANGE], description="Premium laminates sell faster than expected."),
+        ),
+        _variant(
+            classic, "cost-inflation", "Cost inflation",
+            "Halfway through, production and transport costs rise 25% over two months and stay there.",
+            Event(id="inflation", name="Costs +25%", kind="cost", start_day=1096, ramp_days=60, factor=1.25,
+                  cost_items=["production", "transport"], description="Energy and freight prices rise."),
+        ),
+        _variant(
+            classic, "island-cut-off", "Island cut off",
+            "A storm closes every lane to and from Fardo for 60 days, without warning.",
+            Event(id="storm", name="Fardo cut off", kind="lane", start_day=1000, end_day=1059, regions=[FARDO],
+                  closed=True, visibility="surprise", description="No ships or mail cross to the island."),
+        ),
+        _variant(
+            classic, "factory-fire", "Factory fire",
+            "A fire stops the Calopeia factory for 30 days, without warning.",
+            Event(id="fire", name="Calopeia factory fire", kind="outage", start_day=950, end_day=979,
+                  regions=[CALOPEIA], facility="factory", visibility="surprise",
+                  description="Production in Calopeia stops; a batch in progress waits."),
+        ),
+        _variant(
+            classic, "early-obsolescence", "Early obsolescence",
+            "The new foam technology arrives early: demand starts falling on day 1300 and is gone by day 1330. "
+            "Announced in advance.",
+            Event(id="obsolete", name="Early end of life", kind="end_of_life", start_day=1300, end_day=1330,
+                  description="Customers switch to the new technology 130 days early."),
+        ),
     ]
+    return [sc.model_copy(update={"standard": True}) for sc in scenarios]
 
 
 def main(out_dir: str) -> None:

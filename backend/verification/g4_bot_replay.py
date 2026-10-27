@@ -64,7 +64,7 @@ class EngineController:
 
     def get_all_demand(self) -> pd.DataFrame:
         # Completed days only: the live game could not show today's demand in advance.
-        hist = history(self.engine.scenario, self.engine.day - 1)
+        hist = history(self.engine.daily_demand, self.engine.day - 1)
         days = sorted(hist["Calopeia"])
         return pd.DataFrame({"Day": days, **{n: [hist[n].get(d, 0) for d in days] for n in NAMES}})
 

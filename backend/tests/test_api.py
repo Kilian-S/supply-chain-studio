@@ -31,3 +31,28 @@ def test_play_a_run():
 
     statement = client.get(f"/api/runs/{run}/cash-statement").json()
     assert statement["uses"]["capacity_and_buildings"] == 100_000
+
+
+def test_design_save_preview_and_delete_a_scenario():
+    sc = client.get("/api/scenarios/classic-network").json()
+    assert sc["standard"] and sc["demand"]["Calopeia"]["csv"] == "data/classic_demand.csv"
+    assert client.put("/api/scenarios/classic-network", json=sc).status_code == 409
+
+    sc["name"] = "Test shock"
+    sc["events"] = [{"id": "s", "name": "Shock", "kind": "demand", "start_day": 900, "factor": 0.5}]
+    preview = client.post("/api/scenarios/preview", json=sc).json()
+    i = preview["days"].index(950)
+    assert preview["demand_multiplier"]["Tyran"][i] == 0.5 and preview["demand_multiplier"]["Tyran"][0] == 1
+
+    try:
+        saved = client.put("/api/scenarios/zz-test-shock", json=sc).json()
+        assert saved["id"] == "zz-test-shock" and not saved["standard"]
+        listed = {s["id"]: s for s in client.get("/api/scenarios").json()}
+        assert listed["zz-test-shock"]["events"] == 1
+        run = client.post("/api/runs", json={"scenario_id": "zz-test-shock"}).json()
+        assert run["events"][0]["name"] == "Shock" and not run["events"][0]["active"]
+    finally:
+        assert client.delete("/api/scenarios/zz-test-shock").status_code == 200
+
+    sc["events"][0]["end_day"] = 800  # ends before it starts
+    assert client.post("/api/scenarios/preview", json=sc).status_code == 422

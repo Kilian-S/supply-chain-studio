@@ -2,6 +2,7 @@
   "id": "classic-network",
   "name": "Classic network",
   "description": "Five regions, one factory and warehouse in Calopeia at the start, as in the Imperial 2026 network run, with the costs the live game charged.",
+  "standard": true,
   "regions": [
     {
       "id": 1,
@@ -419,5 +420,6 @@
     "start_day": 731,
     "end_day": 1460
   },
+  "events": [],
   "seed": 0
 }

@@ -27,8 +27,8 @@ from collections import defaultdict, deque
 from dataclasses import asdict, dataclass, field
 from typing import Any, Callable
 
-from .demand import Order, build_orders
-from .scenario import FulfilmentPolicy, RouteSettings, Scenario, ShipMode
+from .demand import Order, build_orders, daily_demand
+from .scenario import Event, FulfilmentPolicy, RouteSettings, Scenario, ShipMode
 
 
 class DecisionError(ValueError):
@@ -154,8 +154,6 @@ class Engine:
         self.policy = scenario.start.fulfilment_policy
         self.finished = False
 
-        rate = self.econ.interest_rate_annual
-        self._daily_rate = rate / 365 if self.econ.interest_compounding == "nominal" else (1 + rate) ** (1 / 365) - 1
 
         self.factories: dict[int, FactoryState] = {
             f.region: FactoryState(region=f.region, capacity=f.capacity) for f in scenario.start.factories
@@ -173,7 +171,8 @@ class Engine:
 
         self._events: list[tuple[float, int, int, Any]] = []
         self._seq = 0
-        for order in build_orders(scenario, self.seed) if orders is None else orders:
+        self.daily_demand = daily_demand(scenario, self.seed)
+        for order in build_orders(scenario, self.seed, self.daily_demand) if orders is None else orders:
             self._push(order.time, _ORDER, order)
 
         self.decisions: list[LoggedDecision] = []
@@ -360,6 +359,81 @@ class Engine:
             **totals,
         }
 
+    def visible_events(self) -> list[tuple[Event, bool]]:
+        """Events the player may see now, with whether each is under way. Surprises appear when they start."""
+        today = self.day
+        out = []
+        for e in self.scenario.events:
+            started = e.start_day <= today
+            if e.visibility == "announced" or started:
+                out.append((e, started and e.covers(today)))
+        return out
+
+    # ============================================================================================
+    # Scheduled events
+    # ============================================================================================
+
+    @staticmethod
+    def _day_at(t: float) -> int:
+        return math.floor(t) + 1  # day d covers [d - 1, d)
+
+    def _active(self, kind: str, t: float) -> list[tuple[Event, float]]:
+        day = self._day_at(t)
+        return [(e, e.strength(day)) for e in self.scenario.events if e.kind == kind and e.covers(day)]
+
+    def _cost_factor(self, item: str, t: float, *regions: int) -> float:
+        m = 1.0
+        for e, k in self._active("cost", t):
+            if item in e.cost_items and (item == "holding" or e.touches(*regions)):
+                m *= 1 + (e.factor - 1) * k
+        return m
+
+    def _price(self, t: float, region: int) -> float:
+        m = 1.0
+        for e, k in self._active("price", t):
+            if e.touches(region):
+                m *= 1 + (e.factor - 1) * k
+        return self.econ.price_per_drum * m
+
+    def _lane_effect(self, t: float, a: int, b: int) -> tuple[bool, float, float]:
+        """(closed, lead-time factor, cost factor) for the lane between regions a and b."""
+        closed, lead, cost = False, 1.0, 1.0
+        if a == b:
+            return closed, lead, cost
+        for e, k in self._active("lane", t):
+            if e.touches(a, b):
+                closed = closed or e.closed
+                lead *= 1 + (e.lead_time_factor - 1) * k
+                cost *= 1 + (e.factor - 1) * k
+        return closed, lead, cost
+
+    def _out(self, facility: str, region: int, t: float) -> bool:
+        return any(e.facility == facility and e.touches(region) for e, _ in self._active("outage", t))
+
+    def _production_end(self, region: int, start: float, duration: float) -> float:
+        """Finish time of a batch, pausing through scheduled outages of this factory."""
+        windows = sorted((e.start_day - 1.0, float(e.end_day)) for e in self.scenario.events
+                         if e.kind == "outage" and e.facility == "factory" and e.touches(region))
+        t, left = start, duration
+        for a, b in windows:
+            if b <= t:
+                continue
+            if a <= t:
+                t = b
+                continue
+            if a >= t + left:
+                break
+            left -= a - t
+            t = b
+        return t + left
+
+    def _daily_rate(self, day: int) -> float:
+        rate = self.econ.interest_rate_annual
+        for e in self.scenario.events:
+            if e.kind == "interest" and e.covers(day):
+                rate = e.rate
+        return rate / 365 if self.econ.interest_compounding == "nominal" else (1 + rate) ** (1 / 365) - 1
+
     # ============================================================================================
     # Internals
     # ============================================================================================
@@ -427,6 +501,7 @@ class Engine:
         f.batch = None
         lane = self.scenario.lane(factory_region, batch.warehouse)
         days = lane.truck_days if batch.mode is ShipMode.TRUCK else lane.mail_days
+        days *= self._lane_effect(self.t, factory_region, batch.warehouse)[1]
         shipment = Shipment(factory_region, batch.warehouse, batch.quantity, batch.mode, self.t, self.t + days)
         self.warehouses[batch.warehouse].inbound.append(shipment)
         self._push(shipment.arrive, _ARRIVAL, shipment)
@@ -442,7 +517,8 @@ class Engine:
 
     def _fulfilment_rank(self, region: int) -> list[WarehouseState]:
         live = [w for w in self.warehouses.values()
-                if w.operational(self.t) and (w.region, region) in self.serves]
+                if w.operational(self.t) and (w.region, region) in self.serves
+                and not self._out("warehouse", w.region, self.t) and not self._lane_effect(self.t, w.region, region)[0]]
         return sorted(live, key=lambda w: (self.scenario.lane(w.region, region).mail_cost_per_drum, w.region))
 
     def _allocate(self, region: int, quantity: int, deadline: float) -> int:
@@ -481,8 +557,9 @@ class Engine:
         if quantity <= 0:
             return 0
         w.on_hand -= quantity
-        revenue = quantity * self.econ.price_per_drum
-        cost = quantity * self.scenario.lane(w.region, region).mail_cost_per_drum
+        revenue = quantity * self._price(self.t, region)
+        cost = (quantity * self.scenario.lane(w.region, region).mail_cost_per_drum
+                * self._cost_factor("fulfilment", self.t, w.region, region) * self._lane_effect(self.t, w.region, region)[2])
         self.cash += revenue - cost
         self._today.revenue += revenue
         self._today.fulfilment_cost += cost
@@ -515,17 +592,19 @@ class Engine:
     # --- production -----------------------------------------------------------------------------
 
     def _batch_cost(self, factory: int, warehouse: int, settings: RouteSettings) -> tuple[float, float]:
-        production = self.econ.batch_fixed_cost + settings.quantity * self.econ.unit_cost
+        production = (self.econ.batch_fixed_cost + settings.quantity * self.econ.unit_cost) \
+            * self._cost_factor("production", self.t, factory)
         lane = self.scenario.lane(factory, warehouse)
         if settings.mode is ShipMode.TRUCK:
             shipping = math.ceil(settings.quantity / self.econ.truck_capacity) * lane.truck_cost
         else:
             shipping = settings.quantity * lane.mail_cost_per_drum
+        shipping *= self._cost_factor("transport", self.t, factory, warehouse) * self._lane_effect(self.t, factory, warehouse)[2]
         return production, shipping
 
     def _check_factories(self) -> None:
         for f in sorted(self.factories.values(), key=lambda f: f.region):
-            if f.batch is not None or not f.operational(self.t):
+            if f.batch is not None or not f.operational(self.t) or self._out("factory", f.region, self.t):
                 continue
             best: tuple[int, int, RouteSettings, float, float] | None = None
             for (fr, wr), s in self.routes.items():
@@ -535,6 +614,8 @@ class Engine:
                 if w is None or not w.operational(self.t):
                     continue
                 if w.on_hand + w.en_route > s.order_point:
+                    continue
+                if self._lane_effect(self.t, fr, wr)[0]:
                     continue
                 production, shipping = self._batch_cost(fr, wr, s)
                 if self.rules.cash_check_on_production and self.cash < production + shipping:
@@ -553,7 +634,8 @@ class Engine:
         else:
             self._today.mail_cost += shipping
         self._today.batches_started += 1
-        f.batch = Batch(warehouse, s.quantity, s.mode, self.t, self.t + s.quantity / f.capacity)
+        f.batch = Batch(warehouse, s.quantity, s.mode, self.t,
+                        self._production_end(f.region, self.t, s.quantity / f.capacity))
         self._push(f.batch.end, _BATCH_DONE, f.region)
 
     # --- end of day -----------------------------------------------------------------------------
@@ -561,10 +643,11 @@ class Engine:
     def _close_day(self) -> DayRecord:
         self._expire_claims()
         rec = self._today
-        rec.holding_cost = self._held_drum_days * self.econ.holding_cost_per_drum_year / 365
+        rec.holding_cost = (self._held_drum_days * self.econ.holding_cost_per_drum_year / 365
+                            * self._cost_factor("holding", self.t - 0.5))
         self._held_drum_days = 0.0
         self.cash -= rec.holding_cost
-        rec.interest = self.cash * self._daily_rate
+        rec.interest = self.cash * self._daily_rate(self.day)
         self.cash += rec.interest
         rec.cash = self.cash
         rec.on_hand = {r: w.on_hand for r, w in self.warehouses.items()}
