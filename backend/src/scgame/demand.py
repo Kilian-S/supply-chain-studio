@@ -61,9 +61,56 @@ def split_into_orders(total: int, spec: RecordedDemand, rng: random.Random) -> l
     return sizes
 
 
-def build_orders(scenario: Scenario, seed: int | None = None) -> list[Order]:
+def demand_multiplier(scenario: Scenario, region_id: int, day: int) -> float:
+    """Combined effect of the scenario's demand events on one region and day."""
+    m = 1.0
+    for e in scenario.events:
+        if not e.touches(region_id):
+            continue
+        if e.kind == "demand":
+            m *= 1 + (e.factor - 1) * e.strength(day)
+        elif e.kind == "market_opening":
+            m *= 0.0 if day < e.start_day else (e.strength(day) if e.ramp_days else 1.0)
+        elif e.kind == "end_of_life" and day >= e.start_day:
+            span = max(e.end_day - e.start_day + 1, 1)
+            m *= max(0.0, 1 - (day - e.start_day + 1) / span)
+    return m
+
+
+def _scale(total: int, m: float, spec: RecordedDemand, rng: random.Random) -> int:
+    """Scale a daily total, rounding at random so the expected value is exact. Fixed-size orders
+    stay whole (a 250-drum customer still orders 250 drums, just more or less often)."""
+    unit = spec.fixed_order_size or 1
+    x = total / unit * m
+    whole = int(x)
+    return (whole + (rng.random() < x - whole)) * unit
+
+
+def daily_demand(scenario: Scenario, seed: int | None = None) -> dict[str, dict[int, int]]:
+    """Daily demand per region for every recorded day, with the scenario's events applied to play days."""
+    seed = scenario.seed if seed is None else seed
+    start, end = scenario.timeline.start_day, scenario.timeline.end_day
+    out: dict[str, dict[int, int]] = {}
+    for region in scenario.regions:
+        spec = scenario.demand.get(region.name)
+        if spec is None:
+            continue
+        totals = dict(daily_totals(spec, region.name))
+        if scenario.events:
+            rng = random.Random(seed * 7_919 + zlib.crc32(region.name.encode()) + 1)
+            for day in range(start, end + 1):
+                m = demand_multiplier(scenario, region.id, day)
+                if m != 1.0:
+                    totals[day] = _scale(totals.get(day, 0), m, spec, rng)
+        out[region.name] = totals
+    return out
+
+
+def build_orders(scenario: Scenario, seed: int | None = None,
+                 daily: dict[str, dict[int, int]] | None = None) -> list[Order]:
     """All orders from the first to the last play day, sorted by time."""
     seed = scenario.seed if seed is None else seed
+    daily = daily_demand(scenario, seed) if daily is None else daily
     start, end = scenario.timeline.start_day, scenario.timeline.end_day
     orders: list[Order] = []
     for region in scenario.regions:
@@ -72,7 +119,7 @@ def build_orders(scenario: Scenario, seed: int | None = None) -> list[Order]:
             continue
         # Per-region stream so adding a region never changes another region's orders.
         rng = random.Random(seed * 1_000_003 + zlib.crc32(region.name.encode()))
-        totals = daily_totals(spec, region.name)
+        totals = daily[region.name]
         for day in range(start, end + 1):
             sizes = split_into_orders(totals.get(day, 0), spec, rng)
             times = sorted(day - 1 + rng.random() for _ in sizes)  # day d covers [d - 1, d)
@@ -81,13 +128,6 @@ def build_orders(scenario: Scenario, seed: int | None = None) -> list[Order]:
     return orders
 
 
-def history(scenario: Scenario, up_to_day: int) -> dict[str, dict[int, int]]:
+def history(daily: dict[str, dict[int, int]], up_to_day: int) -> dict[str, dict[int, int]]:
     """Daily demand per region from day 1 up to and including `up_to_day` (what HQ would plot)."""
-    out: dict[str, dict[int, int]] = {}
-    for region in scenario.regions:
-        spec = scenario.demand.get(region.name)
-        if spec is None:
-            continue
-        totals = daily_totals(spec, region.name)
-        out[region.name] = {d: q for d, q in totals.items() if d <= up_to_day}
-    return out
+    return {name: {d: q for d, q in series.items() if d <= up_to_day} for name, series in daily.items()}

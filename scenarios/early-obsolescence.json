@@ -1,0 +1,446 @@
+{
+  "id": "early-obsolescence",
+  "name": "Early obsolescence",
+  "description": "The new foam technology arrives early: demand starts falling on day 1300 and is gone by day 1330. Announced in advance.",
+  "standard": true,
+  "regions": [
+    {
+      "id": 1,
+      "name": "Calopeia",
+      "landmass": "continent",
+      "map": {
+        "outline": [
+          [
+            131.1,
+            140.0
+          ],
+          [
+            188.9,
+            100.6
+          ],
+          [
+            277.8,
+            85.3
+          ],
+          [
+            366.7,
+            105.0
+          ],
+          [
+            455.6,
+            100.6
+          ],
+          [
+            477.8,
+            214.4
+          ],
+          [
+            531.1,
+            328.1
+          ],
+          [
+            340.0,
+            369.7
+          ],
+          [
+            153.3,
+            330.3
+          ],
+          [
+            126.7,
+            240.6
+          ]
+        ],
+        "label": [
+          283.3,
+          164.1
+        ],
+        "factory": [
+          255.6,
+          273.4
+        ],
+        "warehouse": [
+          377.8,
+          257.0
+        ],
+        "headquarters": [
+          188.9,
+          196.9
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "name": "Sorange",
+      "landmass": "continent",
+      "map": {
+        "outline": [
+          [
+            455.6,
+            100.6
+          ],
+          [
+            533.3,
+            80.9
+          ],
+          [
+            633.3,
+            76.6
+          ],
+          [
+            722.2,
+            91.9
+          ],
+          [
+            797.8,
+            113.8
+          ],
+          [
+            831.1,
+            164.1
+          ],
+          [
+            824.4,
+            247.2
+          ],
+          [
+            680.0,
+            273.4
+          ],
+          [
+            531.1,
+            328.1
+          ],
+          [
+            477.8,
+            214.4
+          ]
+        ],
+        "label": [
+          638.9,
+          136.7
+        ],
+        "factory": [
+          588.9,
+          207.8
+        ],
+        "warehouse": [
+          722.2,
+          202.3
+        ],
+        "headquarters": null
+      }
+    },
+    {
+      "id": 3,
+      "name": "Tyran",
+      "landmass": "continent",
+      "map": {
+        "outline": [
+          [
+            680.0,
+            273.4
+          ],
+          [
+            824.4,
+            247.2
+          ],
+          [
+            855.6,
+            328.1
+          ],
+          [
+            853.3,
+            428.8
+          ],
+          [
+            826.7,
+            498.8
+          ],
+          [
+            784.4,
+            546.9
+          ],
+          [
+            711.1,
+            564.4
+          ],
+          [
+            628.9,
+            570.9
+          ],
+          [
+            577.8,
+            546.9
+          ],
+          [
+            540.0,
+            520.6
+          ],
+          [
+            531.1,
+            328.1
+          ]
+        ],
+        "label": [
+          694.4,
+          481.2
+        ],
+        "factory": [
+          622.2,
+          382.8
+        ],
+        "warehouse": [
+          744.4,
+          388.3
+        ],
+        "headquarters": null
+      }
+    },
+    {
+      "id": 4,
+      "name": "Entworpe",
+      "landmass": "continent",
+      "map": {
+        "outline": [
+          [
+            153.3,
+            330.3
+          ],
+          [
+            340.0,
+            369.7
+          ],
+          [
+            531.1,
+            328.1
+          ],
+          [
+            540.0,
+            520.6
+          ],
+          [
+            466.7,
+            531.6
+          ],
+          [
+            377.8,
+            518.4
+          ],
+          [
+            291.1,
+            494.4
+          ],
+          [
+            220.0,
+            459.4
+          ],
+          [
+            177.8,
+            402.5
+          ]
+        ],
+        "label": [
+          355.6,
+          475.8
+        ],
+        "factory": [
+          311.1,
+          410.2
+        ],
+        "warehouse": [
+          444.4,
+          410.2
+        ],
+        "headquarters": null
+      }
+    },
+    {
+      "id": 5,
+      "name": "Fardo",
+      "landmass": "island",
+      "map": {
+        "outline": [
+          [
+            71.1,
+            531.6
+          ],
+          [
+            131.1,
+            514.1
+          ],
+          [
+            177.8,
+            538.1
+          ],
+          [
+            188.9,
+            599.4
+          ],
+          [
+            146.7,
+            645.3
+          ],
+          [
+            88.9,
+            649.7
+          ],
+          [
+            57.8,
+            608.1
+          ]
+        ],
+        "label": [
+          120.0,
+          672.7
+        ],
+        "factory": [
+          105.6,
+          563.3
+        ],
+        "warehouse": [
+          144.4,
+          612.5
+        ],
+        "headquarters": null
+      }
+    }
+  ],
+  "lanes": {
+    "same_region": {
+      "truck_cost": 15000.0,
+      "truck_days": 7.0,
+      "mail_cost_per_drum": 150.0,
+      "mail_days": 1.0
+    },
+    "same_landmass": {
+      "truck_cost": 20000.0,
+      "truck_days": 7.0,
+      "mail_cost_per_drum": 200.0,
+      "mail_days": 1.0
+    },
+    "cross_water": {
+      "truck_cost": 45000.0,
+      "truck_days": 14.0,
+      "mail_cost_per_drum": 400.0,
+      "mail_days": 2.0
+    }
+  },
+  "economics": {
+    "price_per_drum": 1450.0,
+    "batch_fixed_cost": 1500.0,
+    "unit_cost": 1000.0,
+    "holding_cost_per_drum_year": 100.0,
+    "holding_cost_in_transit": true,
+    "interest_rate_annual": 0.1,
+    "interest_compounding": "nominal",
+    "capacity_cost_per_unit": 50000.0,
+    "factory_build_cost": 500000.0,
+    "factory_build_days": 90.0,
+    "capacity_build_days": 90.0,
+    "warehouse_build_cost": 100000.0,
+    "warehouse_build_days": 60.0,
+    "truck_capacity": 200
+  },
+  "rules": {
+    "lost_sale_window_days": 1.0,
+    "max_factories_per_region": 1,
+    "max_warehouses_per_region": 1,
+    "allowed_policies": [
+      "nearest",
+      "soonest"
+    ],
+    "buildable_regions": null,
+    "allow_capacity_additions": true,
+    "cash_check_on_production": true,
+    "new_warehouse_serves_all": true
+  },
+  "demand": {
+    "Calopeia": {
+      "kind": "recorded",
+      "csv": "data/classic_demand.csv",
+      "mean_order_size": 7.5,
+      "fixed_order_size": null
+    },
+    "Sorange": {
+      "kind": "recorded",
+      "csv": "data/classic_demand.csv",
+      "mean_order_size": 8.0,
+      "fixed_order_size": null
+    },
+    "Tyran": {
+      "kind": "recorded",
+      "csv": "data/classic_demand.csv",
+      "mean_order_size": 8.0,
+      "fixed_order_size": null
+    },
+    "Entworpe": {
+      "kind": "recorded",
+      "csv": "data/classic_demand.csv",
+      "mean_order_size": 7.5,
+      "fixed_order_size": 250
+    },
+    "Fardo": {
+      "kind": "recorded",
+      "csv": "data/classic_demand.csv",
+      "mean_order_size": 8.0,
+      "fixed_order_size": null
+    }
+  },
+  "start": {
+    "cash": 6796510.0,
+    "factories": [
+      {
+        "region": 1,
+        "capacity": 70.0
+      }
+    ],
+    "warehouses": [
+      {
+        "region": 1,
+        "inventory": 2528,
+        "serves": null
+      }
+    ],
+    "routes": [
+      {
+        "factory_region": 1,
+        "warehouse_region": 1,
+        "settings": {
+          "order_point": 500,
+          "quantity": 250,
+          "mode": "truck",
+          "priority": 0
+        }
+      }
+    ],
+    "fulfilment_policy": "nearest"
+  },
+  "timeline": {
+    "start_day": 731,
+    "end_day": 1460
+  },
+  "events": [
+    {
+      "id": "obsolete",
+      "name": "Early end of life",
+      "kind": "end_of_life",
+      "start_day": 1300,
+      "end_day": 1330,
+      "ramp_days": 0,
+      "visibility": "announced",
+      "description": "Customers switch to the new technology 130 days early.",
+      "regions": null,
+      "factor": 1.0,
+      "cost_items": [
+        "production",
+        "transport"
+      ],
+      "rate": null,
+      "closed": false,
+      "lead_time_factor": 1.0,
+      "facility": "factory"
+    }
+  ],
+  "seed": 0
+}

@@ -2,6 +2,7 @@
   "id": "classic-one-region",
   "name": "Classic: one region",
   "description": "The single-region stage: one factory and one warehouse in Calopeia. Decide capacity, order point, quantity and transport mode.",
+  "standard": true,
   "regions": [
     {
       "id": 1,
@@ -158,5 +159,6 @@
     "start_day": 731,
     "end_day": 1460
   },
+  "events": [],
   "seed": 0
 }

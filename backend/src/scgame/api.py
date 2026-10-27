@@ -13,7 +13,9 @@ from typing import Any
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from .demand import history
+import re
+
+from .demand import daily_demand, demand_multiplier, history
 from .engine import DecisionError, Engine
 from .scenario import Scenario, ShipMode
 
@@ -121,6 +123,7 @@ def _state(run_id: str, engine: Engine) -> dict[str, Any]:
         ],
         "last_record": last,
         "summary": engine.summary(),
+        "events": [{**e.model_dump(mode="json"), "active": active} for e, active in engine.visible_events()],
     }
 
 
@@ -133,10 +136,89 @@ def list_scenarios() -> list[dict[str, Any]]:
     out = []
     for scenario_id, path in _scenario_files().items():
         sc = Scenario.load(path)
-        out.append({"id": scenario_id, "name": sc.name, "description": sc.description,
-                    "regions": len(sc.regions), "start_day": sc.timeline.start_day,
-                    "end_day": sc.timeline.end_day})
-    return out
+        out.append({"id": scenario_id, "name": sc.name, "description": sc.description, "standard": sc.standard,
+                    "regions": len(sc.regions), "events": len(sc.events),
+                    "start_day": sc.timeline.start_day, "end_day": sc.timeline.end_day})
+    # Standard scenarios first, in library order; then the user's own, by name.
+    order = {"classic-network": 0, "classic-one-region": 1, "classic-network-imperial-notes": 2}
+    return sorted(out, key=lambda s: (not s["standard"], order.get(s["id"], 9), s["name"]))
+
+
+def _for_client(sc: Scenario) -> dict[str, Any]:
+    """Scenario JSON with demand files relative to the scenario folder, as stored on disk."""
+    data = sc.model_dump(mode="json")
+    for spec in data["demand"].values():
+        path = Path(spec["csv"])
+        if path.is_absolute() and path.is_relative_to(SCENARIO_DIR.resolve()):
+            spec["csv"] = str(path.relative_to(SCENARIO_DIR.resolve()))
+    return data
+
+
+def _from_client(data: dict[str, Any]) -> Scenario:
+    try:
+        sc = Scenario.model_validate(data)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    for spec in sc.demand.values():
+        if not Path(spec.csv).is_absolute():
+            spec.csv = str((SCENARIO_DIR / spec.csv).resolve())
+        if not Path(spec.csv).is_file():
+            raise HTTPException(422, f"demand file not found: {spec.csv}")
+    return sc
+
+
+@app.get("/api/scenarios/{scenario_id}")
+def get_scenario(scenario_id: str) -> dict[str, Any]:
+    return _for_client(_load_scenario(scenario_id))
+
+
+@app.put("/api/scenarios/{scenario_id}")
+def save_scenario(scenario_id: str, data: dict[str, Any]) -> dict[str, Any]:
+    """Create or overwrite one of the player's own scenarios (standard ones are read-only)."""
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", scenario_id):
+        raise HTTPException(422, "scenario id: lower-case letters, digits and hyphens only")
+    existing = _scenario_files().get(scenario_id)
+    if existing is not None and Scenario.load(existing).standard:
+        raise HTTPException(409, "standard scenarios are read-only; duplicate it under a new id")
+    sc = _from_client({**data, "id": scenario_id, "standard": False})
+    sc.save(SCENARIO_DIR / f"{scenario_id}.json", relative_to=SCENARIO_DIR)
+    return _for_client(sc)
+
+
+@app.delete("/api/scenarios/{scenario_id}")
+def delete_scenario(scenario_id: str) -> dict[str, str]:
+    path = _scenario_files().get(scenario_id)
+    if path is None:
+        raise HTTPException(404, f"unknown scenario {scenario_id!r}")
+    if Scenario.load(path).standard:
+        raise HTTPException(409, "standard scenarios cannot be deleted")
+    path.unlink()
+    return {"deleted": scenario_id}
+
+
+@app.post("/api/scenarios/preview")
+def preview_scenario(data: dict[str, Any]) -> dict[str, Any]:
+    """What the event timeline does, before playing: demand per region (recorded vs with events) and
+    the combined multipliers over the play window."""
+    sc = _from_client(data)
+    plain = daily_demand(sc.model_copy(update={"events": []}), sc.seed)
+    shaped = daily_demand(sc, sc.seed)
+    days = list(range(sc.timeline.start_day, sc.timeline.end_day + 1))
+    probe = Engine(sc.model_copy(update={"events": sc.events}), orders=[])
+    any_region = sc.regions[0].id
+    return {
+        "days": days,
+        "baseline": {n: [plain[n].get(d, 0) for d in days] for n in plain},
+        "with_events": {n: [shaped[n].get(d, 0) for d in days] for n in shaped},
+        "demand_multiplier": {r.name: [demand_multiplier(sc, r.id, d) for d in days] for r in sc.regions},
+        "multipliers": {
+            item: [probe._cost_factor(item, d - 0.5, *[r.id for r in sc.regions]) for d in days]
+            for item in ("production", "transport", "fulfilment", "holding")
+        } | {
+            "price": [probe._price(d - 0.5, any_region) / sc.economics.price_per_drum for d in days],
+            "interest_rate": [probe._daily_rate(d) * 365 for d in days],
+        },
+    }
 
 
 @app.post("/api/runs")
@@ -193,7 +275,7 @@ def demand(run_id: str) -> dict[str, Any]:
     engine = _run(run_id)
     names = {r.id: r.name for r in engine.scenario.regions}
     played = {r.day: r for r in engine.records}
-    hist = history(engine.scenario, engine.day - 1)
+    hist = history(engine.daily_demand, engine.day - 1)
     days = sorted({d for series in hist.values() for d in series})
     out = {"days": days, "demand": {}, "lost": {}}
     for name, series in hist.items():
