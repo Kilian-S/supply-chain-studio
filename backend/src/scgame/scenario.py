@@ -201,6 +201,8 @@ class Event(BaseModel):
             raise ValueError(f"event {self.name!r} ends before it starts")
         if self.ramp_days < 0 or self.factor < 0 or self.lead_time_factor <= 0:
             raise ValueError(f"event {self.name!r}: ramp, factor and lead-time factor must be positive")
+        if self.regions is not None and not self.regions:
+            raise ValueError(f"event {self.name!r}: choose at least one region")
         if self.kind == "interest" and self.rate is None:
             raise ValueError(f"event {self.name!r}: an interest event needs a rate")
         if self.kind == "end_of_life" and self.end_day is None:

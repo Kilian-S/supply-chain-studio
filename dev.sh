@@ -2,7 +2,7 @@
 # Start the API (port 8000) and the web app (http://localhost:5173). Ctrl+C stops both.
 set -euo pipefail
 cd "$(dirname "$0")"
-(cd backend && uv run uvicorn scgame.api:app --port 8000) &
+(cd backend && uv run uvicorn scgame.api:app --port 8000 --reload) &
 API=$!
 trap 'kill $API 2>/dev/null' EXIT
 cd frontend

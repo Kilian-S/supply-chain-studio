@@ -5,6 +5,8 @@ import { CloseIcon, LogoMark } from './components/icons'
 import MapView, { type Selection } from './components/MapView'
 import StartScreen from './components/StartScreen'
 import Timeline from './components/Timeline'
+import Designer from './designer/Designer'
+import { kindMeta } from './designer/eventKinds'
 import FactoryPanel from './components/panels/FactoryPanel'
 import HQPanel from './components/panels/HQPanel'
 import { CashPanel, HistoryPanel, OverviewPanel } from './components/panels/InfoPanels'
@@ -13,16 +15,21 @@ import WarehousePanel from './components/panels/WarehousePanel'
 
 type View = 'map' | 'history' | 'cash'
 
+type Screen = { kind: 'start' } | { kind: 'design'; id: string; taken: string[] } | { kind: 'play'; run: RunState }
+
 export default function App() {
-  const [run, setRun] = useState<RunState | null>(null)
+  const [screen, setScreen] = useState<Screen>({ kind: 'start' })
+  const toStart = () => setScreen({ kind: 'start' })
+  const play = (run: RunState) => setScreen({ kind: 'play', run })
+  if (screen.kind === 'play') {
+    return <div className="app"><Game key={screen.run.run_id} initial={screen.run} onExit={toStart} /></div>
+  }
   return (
     <div className="app">
-      {run ? <Game key={run.run_id} initial={run} onExit={() => setRun(null)} /> : (
-        <>
-          <header className="topbar"><div className="brand"><LogoMark />Supply Chain Studio</div></header>
-          <StartScreen onStart={setRun} />
-        </>
-      )}
+      <header className="topbar"><div className="brand"><LogoMark />Supply Chain Studio</div></header>
+      {screen.kind === 'design'
+        ? <Designer key={screen.id} scenarioId={screen.id} takenIds={screen.taken} onBack={toStart} onPlay={play} />
+        : <StartScreen onStart={play} onDesign={(id, taken) => setScreen({ kind: 'design', id, taken })} />}
     </div>
   )
 }
@@ -138,6 +145,7 @@ function Game({ initial, onExit }: { initial: RunState; onExit: () => void }) {
             <span><svg width="20" height="10" aria-hidden="true"><rect x="2" y="1" width="16" height="8" rx="2" fill="#fff" stroke="#1e1b2e" strokeWidth="1.5" /></svg>Truck</span>
             <span><svg width="16" height="10" aria-hidden="true"><rect x="1" y="1" width="14" height="8" rx="1" fill="#ead77a" stroke="#1e1b2e" strokeWidth="1.4" /></svg>Mail</span>
           </div>
+          <News state={state} />
           <MapView state={state} selection={selection} onSelect={select} />
           <Timeline state={state} playing={playing} speed={speed} busy={busy} decisionDays={decisionDays}
             onPlay={setPlaying} onSpeed={setSpeed} onStep={() => step(1).catch((e) => setError(e.message))} onRunTo={runTo} />
@@ -154,5 +162,29 @@ function Game({ initial, onExit }: { initial: RunState; onExit: () => void }) {
         </aside>
       </main>
     </>
+  )
+}
+
+// Events under way, or announced and starting within 30 days.
+function News({ state }: { state: RunState }) {
+  const now = state.day
+  const items = state.events
+    .filter((e) => e.active || (e.start_day > now && e.start_day - now <= 30))
+    .sort((a, b) => a.start_day - b.start_day)
+  if (!items.length) return null
+  return (
+    <div className="news" role="status" aria-live="polite">
+      <b>{items.some((e) => e.active) ? 'News' : 'Coming up'}</b>
+      <span>
+        {items.map((e, i) => (
+          <span key={e.id}>
+            {i > 0 && ' · '}
+            <i className="swatch" style={{ background: kindMeta(e.kind).color, width: 10, height: 10, borderRadius: 3, marginRight: 5 }} />
+            {e.name}{e.active ? '' : ` on day ${e.start_day}`}
+            {e.description ? `: ${e.description}` : ''}
+          </span>
+        ))}
+      </span>
+    </div>
   )
 }
