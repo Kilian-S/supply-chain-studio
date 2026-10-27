@@ -154,12 +154,68 @@ export interface RunState {
   routes: Route[]
   last_record: DayRecord | null
   summary: Summary
+  events: (ScenarioEvent & { active: boolean })[]
+}
+
+// ---- Scenario documents (the designer edits these) -------------------------------------------
+
+export type EventKind = 'demand' | 'market_opening' | 'end_of_life' | 'cost' | 'price' | 'interest' | 'lane' | 'outage'
+export type CostItem = 'production' | 'transport' | 'fulfilment' | 'holding'
+
+export interface ScenarioEvent {
+  id: string
+  name: string
+  kind: EventKind
+  start_day: number
+  end_day: number | null
+  ramp_days: number
+  visibility: 'announced' | 'surprise'
+  description: string
+  regions: number[] | null
+  factor: number
+  cost_items: CostItem[]
+  rate: number | null
+  closed: boolean
+  lead_time_factor: number
+  facility: 'factory' | 'warehouse'
+}
+
+export interface ScenarioDoc {
+  id: string
+  name: string
+  description: string
+  standard: boolean
+  regions: Region[]
+  lanes: ScenarioInfo['lanes']
+  economics: Economics & { holding_cost_in_transit: boolean; interest_compounding: 'nominal' | 'effective' }
+  rules: Rules & { max_factories_per_region: number; max_warehouses_per_region: number; cash_check_on_production: boolean; new_warehouse_serves_all: boolean }
+  demand: Record<string, { kind: 'recorded'; csv: string; mean_order_size: number; fixed_order_size: number | null }>
+  start: {
+    cash: number
+    factories: { region: number; capacity: number }[]
+    warehouses: { region: number; inventory: number; serves: number[] | null }[]
+    routes: { factory_region: number; warehouse_region: number; settings: Omit<Route, 'factory' | 'warehouse'> }[]
+    fulfilment_policy: Policy
+  }
+  timeline: { start_day: number; end_day: number }
+  events: ScenarioEvent[]
+  seed: number
+}
+
+export interface ScenarioPreview {
+  days: number[]
+  baseline: Record<string, number[]>
+  with_events: Record<string, number[]>
+  demand_multiplier: Record<string, number[]>
+  multipliers: Record<'production' | 'transport' | 'fulfilment' | 'holding' | 'price' | 'interest_rate', number[]>
 }
 
 export interface ScenarioListItem {
   id: string
   name: string
   description: string
+  standard: boolean
+  events: number
   regions: number
   start_day: number
   end_day: number
@@ -215,6 +271,10 @@ const post = (body: unknown): RequestInit => ({ method: 'POST', body: JSON.strin
 
 export const api = {
   scenarios: () => call<ScenarioListItem[]>('/api/scenarios'),
+  scenario: (id: string) => call<ScenarioDoc>(`/api/scenarios/${id}`),
+  saveScenario: (doc: ScenarioDoc) => call<ScenarioDoc>(`/api/scenarios/${doc.id}`, { method: 'PUT', body: JSON.stringify(doc) }),
+  deleteScenario: (id: string) => call<{ deleted: string }>(`/api/scenarios/${id}`, { method: 'DELETE' }),
+  preview: (doc: ScenarioDoc) => call<ScenarioPreview>('/api/scenarios/preview', post(doc)),
   newRun: (scenario_id: string, seed?: number) => call<RunState>('/api/runs', post({ scenario_id, seed })),
   step: (runId: string, days: number) => call<RunState>(`/api/runs/${runId}/step`, post({ days })),
   runTo: (runId: string, until_day: number) => call<RunState>(`/api/runs/${runId}/step`, post({ until_day })),

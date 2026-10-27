@@ -197,3 +197,46 @@ table.grid .input, table.grid .select { min-height: 32px; width: 100%; padding: 
   .stage { flex: 0 0 55vh; }
   .kpis { display: none; }
 }
+
+/* ---- Scenario designer --------------------------------------------------------------------- */
+
+.designer { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.designer-bar {
+  display: flex; align-items: center; gap: 12px; padding: 10px 20px; background: #fff; border-bottom: 2px solid var(--ink);
+  flex-wrap: wrap;
+}
+.designer-bar .spacer { flex: 1; }
+.designer-title { font-size: 18px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.designer-error { margin: 10px 20px 0; }
+.designer-body { flex: 1; display: flex; min-height: 0; flex-wrap: wrap; }
+.designer-side {
+  width: 400px; flex: 0 0 400px; overflow-y: auto; background: #fff; border-right: 2px solid var(--ink); padding: 18px 20px 30px;
+}
+.designer-main { flex: 1 1 520px; min-width: 0; overflow-y: auto; padding: 18px 22px 30px; display: flex; flex-direction: column; gap: 20px; }
+.settings { display: flex; flex-direction: column; gap: 22px; }
+.form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.input.sans, textarea.input { font-family: var(--sans); font-size: 13.5px; }
+textarea.input { padding: 8px 10px; resize: vertical; }
+.gantt { background: #fff; border: 2px solid var(--ink); border-radius: 12px; padding: 6px 0; box-shadow: var(--shadow); overflow: hidden; }
+.gantt svg { display: block; touch-action: none; }
+.gantt-tick { font-family: var(--mono); font-size: 10px; fill: var(--ink-2); }
+.gantt-label { font-family: var(--sans); font-size: 12.5px; font-weight: 600; pointer-events: none; }
+.gantt-empty { font-size: 13px; fill: var(--ink-2); }
+.gantt g[role='button']:focus-visible rect:first-child { stroke: var(--accent); stroke-width: 3; }
+.editor { background: #fff; border: 2px solid var(--ink); border-radius: 12px; padding: 14px 16px; }
+.preview-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 18px 24px; }
+.card-actions { display: flex; gap: 8px; margin-top: auto; flex-wrap: wrap; }
+.tag { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--paper); border: 1px solid var(--line-strong); }
+
+/* ---- In-game events ------------------------------------------------------------------------ */
+
+.news {
+  margin: 10px 16px 0; align-self: stretch; background: #fff; border: 2px solid var(--ink); border-radius: 12px;
+  padding: 8px 12px; display: flex; gap: 10px; align-items: center; box-shadow: var(--shadow); font-size: 13px;
+}
+.news b { white-space: nowrap; }
+.timeline .event-band { position: absolute; top: 1px; height: 8px; border-radius: 4px; opacity: .55; }
+
+@media (max-width: 900px) {
+  .designer-side { width: 100%; flex: 1 1 auto; border-right: 0; border-bottom: 2px solid var(--ink); }
+}

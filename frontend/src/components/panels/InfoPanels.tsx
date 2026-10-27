@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, type CashStatement, type DayRecord, type LoggedDecision, type RunState } from '../../api'
 import { money, num, pct } from '../../format'
 import type { Selection } from '../MapView'
+import { kindMeta, summary } from '../../designer/eventKinds'
 import { PanelHead, Stat, regionName } from './common'
 
 export function describe(state: RunState, d: LoggedDecision): string {
@@ -90,6 +91,15 @@ export function OverviewPanel({ state, records, onSelect }: { state: RunState; r
         <Stat label="Drums sold" value={num(s.fulfilled)} />
         <Stat label="Sold, last 30 days" value={num(sold30)} />
         <Stat label="Stock in network" value={num(s.leftover_inventory)} />
+      </div>
+      <div className="section">
+        <h3>Scheduled events</h3>
+        {state.events.length ? state.events.map((e) => (
+          <p className="note" key={e.id}>
+            <i className="swatch" style={{ background: kindMeta(e.kind).color, width: 10, height: 10, borderRadius: 3, marginRight: 6 }} />
+            <b>{e.name}</b>{e.active ? ' (under way)' : ''}: {summary(e, (id) => regionName(state, id))}.{e.description ? ` ${e.description}` : ''}
+          </p>
+        )) : <p className="note">None announced. Surprises, if any, appear here when they happen.</p>}
       </div>
       <div className="section">
         <h3>How to play</h3>

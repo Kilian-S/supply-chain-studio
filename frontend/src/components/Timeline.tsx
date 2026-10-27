@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { RunState } from '../api'
+import { kindMeta } from '../designer/eventKinds'
 import { PauseIcon, PlayIcon, StepIcon } from './icons'
 
 export const SPEEDS = [1, 2, 5, 10, 25, 50]
@@ -41,7 +42,11 @@ export default function Timeline({ state, playing, speed, busy, decisionDays, on
       </label>
       <span className="day">{state.finished ? `Finished, day ${end_day}` : `Day ${state.day}`}</span>
       <div className="track" aria-hidden="true">
-        <div className="fill" style={{ width: `${done * 100}%` }} />
+        {state.events.map((e) => (
+          <div key={e.id} className="event-band" title={e.name}
+            style={{ left: at(e.start_day), width: `calc(${at((e.end_day ?? end_day) + 1)} - ${at(e.start_day)})`, background: kindMeta(e.kind).color }} />
+        ))}
+        <div className="fill" style={{ width: `${done * 100}%`, opacity: 0.85 }} />
         {decisionDays.map((d) => <div key={d} className="tick" style={{ left: at(d), opacity: 0.35 }} />)}
       </div>
       <span className="day muted">{end_day}</span>

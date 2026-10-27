@@ -1,6 +1,6 @@
 # Supply Chain Game Studio (working title)
 
-Plan, last updated 25 October 2026. Status: planning, nothing built yet.
+Plan, last updated 27 October 2026. Status: engine verified against the live game; web app with play mode and scenario designer built; generated worlds, forecasting and optimisation to come.
 
 ## 1. Purpose
 
