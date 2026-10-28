@@ -30,16 +30,25 @@ function dotTexture() {
   return t
 }
 
+// Centre on the core of the cloud (points inside the 10-90% band on every axis) and scale so that
+// band spans about 2 units on its widest axis. Points far outside are pulled in on a log curve, so a
+// distant group stays visible at the edge instead of shrinking everything else to a dot.
 function normalise(coords: number[][]): Float32Array {
   const n = coords.length
   const out = new Float32Array(n * 3)
-  const mins = [Infinity, Infinity, Infinity], maxs = [-Infinity, -Infinity, -Infinity]
-  coords.forEach((p) => [0, 1, 2].forEach((d) => { const v = p[d] ?? 0; mins[d] = Math.min(mins[d], v); maxs[d] = Math.max(maxs[d], v) }))
-  const span = Math.max(...[0, 1, 2].map((d) => maxs[d] - mins[d]), 1e-9)
-  coords.forEach((p, i) => [0, 1, 2].forEach((d) => {
-    const v = p[d] ?? 0
-    out[i * 3 + d] = maxs[d] - mins[d] < 1e-9 ? 0 : ((v - (mins[d] + maxs[d]) / 2) / span) * 2
-  }))
+  const q = (xs: number[], p: number) => xs[Math.min(xs.length - 1, Math.max(0, Math.round(p * (xs.length - 1))))]
+  const lo: number[] = [], hi: number[] = []
+  let span = 1e-9
+  for (let d = 0; d < 3; d++) {
+    const xs = coords.map((c) => c[d] ?? 0).sort((a, b) => a - b)
+    lo.push(q(xs, 0.1)); hi.push(q(xs, 0.9))
+    span = Math.max(span, hi[d] - lo[d])
+  }
+  const core = coords.filter((c) => [0, 1, 2].every((d) => (c[d] ?? 0) >= lo[d] && (c[d] ?? 0) <= hi[d]))
+  const base = core.length ? core : coords
+  const centre = [0, 1, 2].map((d) => base.reduce((a, c) => a + (c[d] ?? 0), 0) / base.length)
+  const squash = (u: number) => (Math.abs(u) <= 1.2 ? u : Math.sign(u) * (1.2 + 0.6 * Math.log1p((Math.abs(u) - 1.2) / 0.6)))
+  coords.forEach((c, i) => { for (let d = 0; d < 3; d++) out[i * 3 + d] = squash((((c[d] ?? 0) - centre[d]) / span) * 2) })
   return out
 }
 
@@ -61,7 +70,7 @@ export default function Projector({ coords, colors, labels, selected, neighbours
     el.appendChild(renderer.domElement)
     const scene = new THREE.Scene()
     const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 100)
-    camera.position.set(2.2, 1.6, 2.6)
+    camera.position.set(2.0, 1.4, 2.4)
     const controls = new OrbitControls(camera, renderer.domElement)
     controls.enableDamping = true
     controls.dampingFactor = 0.08
@@ -69,7 +78,7 @@ export default function Projector({ coords, colors, labels, selected, neighbours
 
     const tex = dotTexture()
     const geo = new THREE.BufferGeometry()
-    const points = new THREE.Points(geo, new THREE.PointsMaterial({ size: 0.075, map: tex, vertexColors: true, transparent: true, alphaTest: 0.3, sizeAttenuation: true }))
+    const points = new THREE.Points(geo, new THREE.PointsMaterial({ size: 0.085, map: tex, vertexColors: true, transparent: true, alphaTest: 0.3, sizeAttenuation: true }))
     scene.add(points)
     const markerGeo = new THREE.BufferGeometry()
     markerGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(3), 3))

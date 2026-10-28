@@ -361,7 +361,7 @@ export function Analysis({ o, load }: { o: Overview; load: (s: Partial<ExplorerS
       <h3>4. Findings</h3>
       <ul className="tight">
         <li>Grouping beats a single rule by about {pct(1 - P[d].total / P.uniform.total)} in the held-out year: most of the gain is not spreading slow sellers across every FC.</li>
-        <li>With all features, clusters are about as good as the ABC/XYZ grid for this cost model ({pct(P[d].total / P.abc_xyz.total - 1)}). They differ in <i>which</i> products they group, and they give every product a probability rather than a hard class.</li>
+        <li>With all features, clusters are about as good as the ABC/XYZ grid for this cost model ({pct(Math.abs(P[d].total / P.abc_xyz.total - 1))} {P[d].total > P.abc_xyz.total ? 'more expensive' : 'cheaper'}). They differ in <i>which</i> products they group, and they give every product a probability rather than a hard class.</li>
         <li>What a cluster means depends on the features you choose: demand-pattern features recover the generating types; volume, size and economics make cheaper policies. Choose features for the decision, not for the score.</li>
         <li>Tuning every SKU individually is cheapest here ({money(P.per_sku.total)}), but it needs history for every product. Clusters give a rule for a brand-new SKU from its attributes on day one.</li>
       </ul>

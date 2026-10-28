@@ -141,10 +141,39 @@ export default function Explorer({ overview, skus, state, setState }: {
             <Projector coords={coords} colors={colors} labels={labels} selected={selected} neighbours={neighbours} dimmed={dimmed}
               flat={state.embedding === 'umap2d'} autoRotate={rotate && selected == null} onSelect={setSelected} />
           ) : <div className="projector" />}
-          <p className="note projector-hint">Drag to rotate, scroll to zoom, click a point to inspect it and draw lines to its 8 nearest neighbours in feature space.
+          <p className="note projector-hint">Drag to rotate, scroll to zoom, click a point to inspect it and draw lines to its 8 nearest neighbours in feature space. Very distant groups are drawn closer than they are.
             {variant && state.embedding === 'pca3d' && ` PCA keeps ${(variant.explained_variance.reduce((a, b) => a + b, 0) * 100).toFixed(0)}% of the variance.`}</p>
         </div>
         <aside className="explorer-side">
+          {sku && clustering && (
+            <div className="section sku-card">
+              <div className="panel-head">
+                <div><div className="eyebrow">{sku.category}</div><h3 style={{ fontSize: 18 }}>{sku.name}</h3></div>
+                <button className="btn small" onClick={() => setSelected(null)}>Clear</button>
+              </div>
+              <div className="kv">
+                <span>Cluster</span><b>{clustering.names[clustering.labels[selected!]]}{clustering.prob ? ` (p = ${clustering.prob[selected!].toFixed(2)})` : ''}</b>
+                <span>True type</span><b>{sku.true_type}{sku.bulky ? ', bulky' : ''}</b>
+                <span>ABC / XYZ / SBC</span><b>{sku.abc} / {sku.xyz} / {sku.sbc}</b>
+                <span>Price, margin</span><b>${sku.price.toFixed(2)}, {(sku.margin * 100).toFixed(0)}%</b>
+                <span>Mean weekly units</span><b>{sku.features.mean_weekly_units.toFixed(1)}</b>
+                <span>ADI, CV²</span><b>{sku.features.adi.toFixed(2)}, {sku.features.cv2.toFixed(2)}</b>
+                <span>Seasonality, trend</span><b>{sku.features.seasonality.toFixed(2)}, {sku.features.trend.toFixed(2)}</b>
+              </div>
+              <LineChart title="Weekly units: training years and held-out year" x={sku.weekly.map((_, i) => i + 1)} xLabel="Week" height={130}
+                series={[
+                  { id: 'train', label: 'Training', color: '#2a78d6', values: sku.weekly.map((v, i) => (i < weeksTrain ? v : null)) },
+                  { id: 'test', label: 'Held-out year', color: '#eb6834', values: sku.weekly.map((v, i) => (i >= weeksTrain - 1 ? v : null)) },
+                ]} />
+              <h3>Nearest neighbours</h3>
+              <ol className="neighbours">
+                {neighbours.map((j, r) => (
+                  <li key={j}><button className="linklike" onClick={() => setSelected(j)}>{skus[j].name}</button>
+                    <span className="muted"> {skus[j].true_type}, d = {variant!.neighbour_dist[selected!][r].toFixed(2)}</span></li>
+                ))}
+              </ol>
+            </div>
+          )}
           <div className="section">
             <h3>Legend</h3>
             <p className="note">Click an entry to isolate it.</p>
@@ -161,35 +190,6 @@ export default function Explorer({ overview, skus, state, setState }: {
               ))}
             </div>
           </div>
-          {sku && clustering && (
-            <div className="section sku-card">
-              <div className="panel-head">
-                <div><div className="eyebrow">{sku.category}</div><h3 style={{ fontSize: 18 }}>{sku.name}</h3></div>
-                <button className="btn small" onClick={() => setSelected(null)}>Clear</button>
-              </div>
-              <div className="kv">
-                <span>Cluster</span><b>{clustering.names[clustering.labels[selected!]]}{clustering.prob ? ` (p = ${clustering.prob[selected!].toFixed(2)})` : ''}</b>
-                <span>True type</span><b>{sku.true_type}{sku.bulky ? ', bulky' : ''}</b>
-                <span>ABC / XYZ / SBC</span><b>{sku.abc} / {sku.xyz} / {sku.sbc}</b>
-                <span>Price, margin</span><b>${sku.price.toFixed(2)}, {(sku.margin * 100).toFixed(0)}%</b>
-                <span>Mean weekly units</span><b>{sku.features.mean_weekly_units.toFixed(1)}</b>
-                <span>ADI, CV²</span><b>{sku.features.adi.toFixed(2)}, {sku.features.cv2.toFixed(2)}</b>
-                <span>Seasonality, trend</span><b>{sku.features.seasonality.toFixed(2)}, {sku.features.trend.toFixed(2)}</b>
-              </div>
-              <LineChart title="Weekly units (dashed line: end of training)" x={sku.weekly.map((_, i) => i + 1)} xLabel="Week" height={130}
-                series={[
-                  { id: 'train', label: 'Training', color: '#2a78d6', values: sku.weekly.map((v, i) => (i < weeksTrain ? v : null)) },
-                  { id: 'test', label: 'Held-out year', color: '#eb6834', values: sku.weekly.map((v, i) => (i >= weeksTrain - 1 ? v : null)) },
-                ]} />
-              <h3>Nearest neighbours</h3>
-              <ol className="neighbours">
-                {neighbours.map((j, r) => (
-                  <li key={j}><button className="linklike" onClick={() => setSelected(j)}>{skus[j].name}</button>
-                    <span className="muted"> {skus[j].true_type}, d = {variant!.neighbour_dist[selected!][r].toFixed(2)}</span></li>
-                ))}
-              </ol>
-            </div>
-          )}
         </aside>
       </div>
 

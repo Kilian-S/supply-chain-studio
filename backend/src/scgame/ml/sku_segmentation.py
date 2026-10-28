@@ -289,7 +289,10 @@ def main(world_dir: str, out_dir: str) -> None:
               .sort_values(["day", "order_id"]))
     examples = []
     for t in TYPE_ORDER:
-        sid = int(skus[skus["true_type"] == t].sort_values("base_rate", ascending=False)["sku_id"].iloc[min(2, (skus["true_type"] == t).sum() - 1)])
+        # A typical SKU of each type: the median by demand rate among those on sale from day 1.
+        pool = skus[(skus["true_type"] == t) & (skus["launch_day"] == 1)].sort_values("base_rate")
+        pool = pool if len(pool) else skus[skus["true_type"] == t].sort_values("base_rate")
+        sid = int(pool["sku_id"].iloc[len(pool) // 2])
         daily = lines[(lines["sku_id"] == sid) & (lines["day"] <= TRAIN_END)].groupby("day")["quantity"].sum().reindex(range(1, TRAIN_END + 1), fill_value=0)
         i = int(np.nonzero(skus["sku_id"].to_numpy() == sid)[0][0])
         examples.append({"sku_id": sid, "name": skus.loc[i, "name"], "true_type": t,
