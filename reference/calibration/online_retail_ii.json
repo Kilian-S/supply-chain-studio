@@ -1,0 +1,71 @@
+{
+  "source": {
+    "name": "UCI Online Retail II",
+    "url": "https://archive.ics.uci.edu/dataset/502/online+retail+ii",
+    "licence": "CC BY 4.0",
+    "citation": "Chen, D. (2019). Online Retail II. UCI Machine Learning Repository.",
+    "period": "2009-12-01 to 2011-12-09",
+    "rows_raw": 1067371,
+    "rows_sales_clean": 1007913,
+    "note": "UK online gift retailer; many customers are wholesalers, so quantities are large. We use shapes and ratios, not absolute quantities."
+  },
+  "basket_distinct_products": {
+    "mean": 24.865833270953416,
+    "p10": 2.0,
+    "p25": 6.0,
+    "p50": 15.0,
+    "p75": 28.0,
+    "p90": 50.0,
+    "p99": 196.0
+  },
+  "share_single_item_baskets": 0.09202285600219577,
+  "orders_per_customer_per_year": {
+    "mean": 3.112733819367795,
+    "p10": 0.49491869918699183,
+    "p25": 0.49491869918699183,
+    "p50": 1.4847560975609755,
+    "p75": 3.4644308943089426,
+    "p90": 6.433943089430894,
+    "p99": 22.766260162601625
+  },
+  "days_between_orders": {
+    "mean": 51.239426200508184,
+    "p10": 0.0,
+    "p25": 6.0,
+    "p50": 24.0,
+    "p75": 61.0,
+    "p90": 134.0,
+    "p99": 368.09999999999854
+  },
+  "sku_demand_class_share": {
+    "lumpy": 0.709,
+    "erratic": 0.1816,
+    "intermittent": 0.0927,
+    "smooth": 0.0167
+  },
+  "skus_classified": 3948,
+  "revenue_share_top20pct_skus": 0.7944972311381687,
+  "monthly_revenue_index": {
+    "1": 0.786,
+    "2": 0.629,
+    "3": 0.907,
+    "4": 0.713,
+    "5": 0.836,
+    "6": 0.885,
+    "7": 0.801,
+    "8": 0.852,
+    "9": 1.159,
+    "10": 1.356,
+    "11": 1.739,
+    "12": 1.337
+  },
+  "quantity_per_line": {
+    "mean": 11.117177772287887,
+    "p10": 1.0,
+    "p25": 1.0,
+    "p50": 4.0,
+    "p75": 12.0,
+    "p90": 24.0,
+    "p99": 108.0
+  }
+}
