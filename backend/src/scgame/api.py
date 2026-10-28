@@ -20,6 +20,7 @@ from .engine import DecisionError, Engine
 from .scenario import Scenario, ShipMode
 
 SCENARIO_DIR = Path(os.environ.get("SCGAME_SCENARIOS", Path(__file__).resolve().parents[3] / "scenarios"))
+MODELS_DIR = Path(os.environ.get("SCGAME_MODELS", Path(__file__).resolve().parents[3] / "data" / "models"))
 
 app = FastAPI(title="Supply Chain Game API", version="0.1.0")
 RUNS: dict[str, Engine] = {}
@@ -303,3 +304,24 @@ def cash_statement(run_id: str) -> dict[str, Any]:
         },
         "cash": engine.cash,
     }
+
+
+# =================================================================================================
+# Prepared model results (written by the scgame.ml pipelines)
+# =================================================================================================
+
+@app.get("/api/models")
+def list_models() -> list[dict[str, Any]]:
+    import json
+    return [json.loads(card.read_text()) for card in sorted(MODELS_DIR.glob("*/card.json"))]
+
+
+@app.get("/api/models/{model_id}/{path:path}")
+def model_file(model_id: str, path: str):
+    from fastapi.responses import FileResponse
+    if not re.fullmatch(r"[a-z0-9-]+", model_id) or not re.fullmatch(r"[A-Za-z0-9_/.-]+\.json", path) or ".." in path:
+        raise HTTPException(400, "bad path")
+    target = (MODELS_DIR / model_id / path).resolve()
+    if not target.is_file() or not target.is_relative_to(MODELS_DIR.resolve()):
+        raise HTTPException(404, "not found")
+    return FileResponse(target, media_type="application/json", headers={"Cache-Control": "max-age=300"})

@@ -1,0 +1,378 @@
+"""Model J: SKU segmentation. Builds every result the model page shows and writes it as JSON.
+
+Usage: uv run python -m scgame.ml.sku_segmentation <world dir> <output dir>
+
+Outputs:
+  card.json              summary for the models home page
+  overview.json          data, transformations, features, baselines, selection, profiles, policies
+  skus.json              one record per SKU (features, classes, weekly series) for the explorer
+  variants/m<mask>.json  per feature-group subset: embeddings, clusterings, metrics, neighbours
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+import time
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+from joblib import Parallel, delayed
+from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
+from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score, silhouette_score
+from sklearn.mixture import GaussianMixture
+from sklearn.neighbors import NearestNeighbors
+
+from . import policy_sim as ps
+from .sku_features import FEATURES, GROUP_LABELS, GROUPS, TRAIN_END, build_features, transform, weekly_matrix
+
+K_RANGE = list(range(2, 11))
+MODELS = ["kmeans", "gmm"]
+BOOTSTRAPS = 8
+SEED = 11
+TYPE_ORDER = ["steady", "seasonal", "trending", "declining", "intermittent", "lumpy"]
+
+
+# =================================================================================================
+# Baselines
+# =================================================================================================
+
+def abc_xyz(features: pd.DataFrame, weekly: np.ndarray, on_sale: np.ndarray) -> pd.DataFrame:
+    rev = features["revenue"].to_numpy()
+    order = np.argsort(-rev)
+    cum = np.cumsum(rev[order]) / rev.sum()
+    abc = np.empty(len(rev), dtype=object)
+    abc[order] = np.where(cum <= 0.80, "A", np.where(cum <= 0.95, "B", "C"))
+    cv = []
+    for i in range(len(rev)):
+        d = weekly[i][on_sale[i]]
+        cv.append(d.std() / d.mean() if len(d) and d.mean() > 0 else np.inf)
+    cv = np.array(cv)
+    xyz = np.where(cv < 0.5, "X", np.where(cv < 1.0, "Y", "Z"))
+    adi, cv2 = features["adi"].to_numpy(), features["cv2"].to_numpy()
+    sbc = np.where(adi < 1.32, np.where(cv2 < 0.49, "smooth", "erratic"), np.where(cv2 < 0.49, "intermittent", "lumpy"))
+    return pd.DataFrame({"abc": abc, "xyz": xyz, "abc_xyz": [a + x for a, x in zip(abc, xyz)], "sbc": sbc, "cv_weekly": cv})
+
+
+# =================================================================================================
+# Clustering for one feature-group subset
+# =================================================================================================
+
+def _fit(model: str, k: int, X: np.ndarray, seed: int):
+    if model == "kmeans":
+        m = KMeans(n_clusters=k, n_init=10, random_state=seed).fit(X)
+        return m.labels_, None, float(m.inertia_), None
+    m = GaussianMixture(n_components=k, covariance_type="diag", n_init=3, reg_covar=1e-3, random_state=seed).fit(X)
+    prob = m.predict_proba(X)
+    return prob.argmax(axis=1), prob.max(axis=1), None, float(m.bic(X))
+
+
+def _relabel(labels: np.ndarray, X: np.ndarray) -> np.ndarray:
+    """Stable cluster numbering: order clusters by their mean first principal coordinate, so that
+    colours do not jump when switching k or model."""
+    pc = PCA(n_components=1, random_state=0).fit_transform(X)[:, 0]
+    order = sorted(np.unique(labels), key=lambda c: pc[labels == c].mean())
+    remap = {c: i for i, c in enumerate(order)}
+    return np.array([remap[c] for c in labels])
+
+
+def run_variant(mask: int, features: pd.DataFrame, truth: np.ndarray, full_z: np.ndarray) -> dict:
+    import umap  # imported in the worker; numba compiles once per process
+
+    groups = [g for i, g in enumerate(GROUPS) if mask >> i & 1]
+    X, cols = transform(features, groups)
+    rng = np.random.default_rng(SEED + mask)
+    emb = {}
+    if X.shape[1] >= 3:
+        emb["umap3d"] = umap.UMAP(n_components=3, n_neighbors=15, min_dist=0.15, random_state=SEED).fit_transform(X)
+        pca = PCA(n_components=3, random_state=0).fit(X)
+        emb["pca3d"] = pca.transform(X)
+        explained = pca.explained_variance_ratio_.tolist()
+    else:
+        pad = np.zeros((len(X), 3))
+        pad[:, : X.shape[1]] = X
+        emb["umap3d"] = emb["pca3d"] = pad
+        explained = [1.0 / X.shape[1]] * X.shape[1] + [0.0] * (3 - X.shape[1])
+    emb["umap2d"] = umap.UMAP(n_components=2, n_neighbors=15, min_dist=0.15, random_state=SEED).fit_transform(X) if X.shape[1] >= 2 \
+        else np.column_stack([X[:, 0], np.zeros(len(X))])
+
+    clusterings = {}
+    for model in MODELS:
+        for k in K_RANGE:
+            labels, prob, inertia, bic = _fit(model, k, X, SEED)
+            labels = _relabel(labels, X)
+            stab = []
+            for _ in range(BOOTSTRAPS):
+                idx = rng.choice(len(X), size=int(0.8 * len(X)), replace=False)
+                lb, *_ = _fit(model, k, X[idx], int(rng.integers(1 << 30)))
+                stab.append(adjusted_rand_score(labels[idx], lb))
+            profile = [full_z[labels == c].mean(axis=0).round(3).tolist() for c in range(k)]
+            clusterings[f"{model}-{k}"] = {
+                "labels": labels.tolist(),
+                "prob": None if prob is None else np.round(prob, 3).tolist(),
+                "metrics": {
+                    "silhouette": float(silhouette_score(X, labels)) if len(np.unique(labels)) > 1 else 0.0,
+                    "inertia": inertia, "bic": bic,
+                    "stability": float(np.mean(stab)), "stability_sd": float(np.std(stab)),
+                    "ari_truth": float(adjusted_rand_score(truth, labels)),
+                    "nmi_truth": float(normalized_mutual_info_score(truth, labels)),
+                },
+                "sizes": np.bincount(labels, minlength=k).tolist(),
+                "profile": profile,
+            }
+    nn = NearestNeighbors(n_neighbors=9).fit(X)
+    dist, ind = nn.kneighbors(X)
+    return {
+        "mask": mask, "groups": groups, "features": cols, "explained_variance": explained,
+        "embeddings": {k: np.round(v, 4).tolist() for k, v in emb.items()},
+        "clusterings": clusterings,
+        "neighbours": ind[:, 1:].tolist(), "neighbour_dist": np.round(dist[:, 1:], 3).tolist(),
+    }
+
+
+# =================================================================================================
+# Naming and policies
+# =================================================================================================
+
+QUALIFIERS = [  # (feature or pair, high word, low word)
+    (("volume_l", "weight_kg"), "bulky", "compact"),
+    (("margin",), "high-margin", "low-margin"),
+    (("price",), "premium", "budget"),
+    (("solo_share",), "bought alone", "basket add-ons"),
+    (("seasonality",), "seasonal", None),
+]
+
+
+def name_cluster(z: dict[str, float]) -> str:
+    """Name from the dominant demand pattern plus the strongest other trait (|z| > 0.5)."""
+    if z["qty_per_line"] > 1.0 and z["adi"] > 0.3:
+        base = "Bulk orders"
+    elif z["adi"] > 0.7:
+        base = "Intermittent long tail"
+    elif z["seasonality"] > 0.8:
+        base = "Seasonal"
+    elif z["trend"] > 0.8 or z["recent_share"] > 0.9:
+        base = "Growing"
+    elif z["trend"] < -0.8 or z["recent_share"] < -0.9:
+        base = "Declining"
+    elif z["mean_weekly_units"] > 0.6:
+        base = "Fast movers"
+    else:
+        base = "Steady mid-volume"
+    best, word = 0.5, None
+    for keys, hi, lo in QUALIFIERS:
+        v = float(np.mean([z[k] for k in keys]))
+        if hi.lower() in base.lower():
+            continue
+        if v > best:
+            best, word = v, hi
+        elif lo and -v > best:
+            best, word = -v, lo
+    return f"{base}, {word}" if word else base
+
+
+def names_for(profile: list[list[float]], keys: list[str]) -> list[str]:
+    out: list[str] = []
+    for row in profile:
+        n = name_cluster(dict(zip(keys, row)))
+        base, i = n, 2
+        while n in out:
+            n = f"{base} {i}"
+            i += 1
+        out.append(n)
+    return out
+
+
+def policy_results(table4: dict, table5: dict, groupings: dict[str, np.ndarray]) -> dict:
+    """Choose a (mode, service) per group on year 4, evaluate on year 5."""
+    out = {}
+    n = len(next(iter(table5.values()))["total"])
+    for name, groups in groupings.items():
+        best = ps.best_per_group(table4, groups)
+        choice = [best[g] for g in groups]
+        res = ps.evaluate(table5, choice)
+        res["rules"] = len(best)
+        res["choices"] = {str(g): {"mode": m, "service": s, "skus": int((groups == g).sum())} for g, (m, s) in best.items()}
+        out[name] = res
+    uniform = ps.evaluate(table5, [("distributed", 0.95)] * n)
+    uniform["rules"] = 1
+    out["uniform"] = uniform
+    central = ps.evaluate(table5, [("central", 0.95)] * n)
+    central["rules"] = 1
+    out["all_central"] = central
+    return out
+
+
+# =================================================================================================
+# Main
+# =================================================================================================
+
+def main(world_dir: str, out_dir: str) -> None:
+    t0 = time.time()
+    world = Path(world_dir)
+    out = Path(out_dir)
+    (out / "variants").mkdir(parents=True, exist_ok=True)
+    skus = pd.read_parquet(world / "skus.parquet")
+    regions = pd.read_parquet(world / "regions.parquet")
+    lines = pd.read_parquet(world / "order_lines.parquet")
+    orders = pd.read_parquet(world / "orders.parquet")
+    meta = json.loads((world / "world.json").read_text())
+
+    features, weekly = build_features(lines, orders, skus)
+    weekly_train, on_sale = weekly_matrix(lines, skus, TRAIN_END)
+    weekly_all, _ = weekly_matrix(lines, skus, meta["days"])
+    truth_names = skus["true_type"].to_numpy()
+    truth = np.array([TYPE_ORDER.index(t) for t in truth_names])
+    base = abc_xyz(features, weekly_train, on_sale)
+    print(f"features ready ({time.time() - t0:.0f}s)")
+
+    # Unweighted z-scores of all features: used for cluster profiles and naming.
+    full_X, keys = transform(features, GROUPS)
+    group_size = {g: sum(1 for f in FEATURES if f.group == g) for g in GROUPS}
+    full_z = full_X * np.array([np.sqrt(group_size[f.group]) for f in FEATURES])
+
+    masks = list(range(1, 1 << len(GROUPS)))
+    variants = Parallel(n_jobs=-1, verbose=0)(delayed(run_variant)(m, features, truth, full_z) for m in masks)
+    full_mask = masks[-1]
+    for v in variants:
+        for c in v["clusterings"].values():
+            c["names"] = names_for(c["profile"], keys)
+    full = next(v for v in variants if v["mask"] == full_mask)
+    leaderboard = []
+    for v in variants:
+        key, c = max(v["clusterings"].items(), key=lambda kv: kv[1]["metrics"]["ari_truth"])
+        leaderboard.append({"mask": v["mask"], "groups": v["groups"], "best": key, **{m: c["metrics"][m] for m in ("ari_truth", "silhouette", "stability")}})
+    leaderboard.sort(key=lambda r: -r["ari_truth"])
+    print(f"variants ready ({time.time() - t0:.0f}s)")
+
+    # Recommended configuration: Gaussian mixture on all features, k with the lowest BIC.
+    best_k = min(K_RANGE, key=lambda k: full["clusterings"][f"gmm-{k}"]["metrics"]["bic"])
+    default = {"mask": full_mask, "model": "gmm", "k": best_k, "embedding": "umap3d"}
+
+    # Policies: optimise per group on year 4, evaluate on year 5.
+    table4 = ps.cost_table(lines, skus, regions, 4)
+    table5 = ps.cost_table(lines, skus, regions, 5)
+    groupings = {
+        "abc": base["abc"].to_numpy(),
+        "abc_xyz": base["abc_xyz"].to_numpy(),
+        "sbc": base["sbc"].to_numpy(),
+        "true_type": truth_names,
+        "per_sku": np.arange(len(skus)),
+    }
+    for model in MODELS:
+        for k in K_RANGE:
+            groupings[f"cluster-{model}-{k}"] = np.array(full["clusterings"][f"{model}-{k}"]["labels"])
+    policies = policy_results(table4, table5, groupings)
+    # Every clustering of every feature subset gets its out-of-sample policy cost, for the explorer.
+    abc_xyz_total = policies["abc_xyz"]["total"]
+    for v in variants:
+        for c in v["clusterings"].values():
+            labels = np.array(c["labels"])
+            best = ps.best_per_group(table4, labels)
+            res = ps.evaluate(table5, [best[g] for g in labels])
+            c["metrics"]["policy_cost"] = res["total"]
+            c["metrics"]["policy_vs_abc_xyz"] = res["total"] / abc_xyz_total - 1
+            c["policy"] = [{"mode": best[g][0], "service": best[g][1]} for g in range(len(c["sizes"]))]
+        (out / "variants" / f"m{v['mask']}.json").write_text(json.dumps(v, separators=(",", ":")))
+    for row in leaderboard:
+        v = next(x for x in variants if x["mask"] == row["mask"])
+        row["best_policy"], c = min(v["clusterings"].items(), key=lambda kv: kv[1]["metrics"]["policy_cost"])
+        row["policy_vs_abc_xyz"] = c["metrics"]["policy_vs_abc_xyz"]
+    print(f"policies ready ({time.time() - t0:.0f}s)")
+
+    # Data section: sample rows, size, transformation examples.
+    sample = (lines[lines["day"] <= TRAIN_END].sample(12, random_state=3)
+              .merge(skus[["sku_id", "name", "category", "price"]], on="sku_id")
+              .merge(orders[["order_id", "customer_id"]], on="order_id")
+              .sort_values(["day", "order_id"]))
+    examples = []
+    for t in TYPE_ORDER:
+        sid = int(skus[skus["true_type"] == t].sort_values("base_rate", ascending=False)["sku_id"].iloc[min(2, (skus["true_type"] == t).sum() - 1)])
+        daily = lines[(lines["sku_id"] == sid) & (lines["day"] <= TRAIN_END)].groupby("day")["quantity"].sum().reindex(range(1, TRAIN_END + 1), fill_value=0)
+        i = int(np.nonzero(skus["sku_id"].to_numpy() == sid)[0][0])
+        examples.append({"sku_id": sid, "name": skus.loc[i, "name"], "true_type": t,
+                         "daily": daily.astype(int).tolist(), "weekly": weekly_train[i].astype(int).tolist()})
+
+    def hist(x: np.ndarray, bins: int = 24) -> dict:
+        c, e = np.histogram(x[np.isfinite(x)], bins=bins)
+        return {"counts": c.tolist(), "edges": np.round(e, 4).tolist()}
+
+    feature_info = []
+    for f, col in zip(FEATURES, full_z.T):
+        raw = features[f.key].to_numpy(dtype=float)
+        feature_info.append({
+            "key": f.key, "group": f.group, "label": f.label, "formula": f.formula, "description": f.description,
+            "log": f.log, "raw_hist": hist(raw), "z_hist": hist(col),
+            "raw_summary": {"min": float(np.min(raw)), "median": float(np.median(raw)), "max": float(np.max(raw))},
+        })
+    corr = np.corrcoef(full_z.T)
+
+    def crosstab(a, b, rows, cols) -> list[list[int]]:
+        return [[int(((a == r) & (b == c)).sum()) for c in cols] for r in rows]
+
+    overview = {
+        "model": {"id": "sku-segmentation", "letter": "J", "title": "SKU segmentation"},
+        "world": {"version": meta["version"], "counts": meta["counts"], "checks": meta["checks"], "days": meta["days"],
+                  "train_days": TRAIN_END, "categories": sorted(skus["category"].unique().tolist())},
+        "data_sample": sample[["day", "order_id", "customer_id", "region_id", "sku_id", "name", "category", "quantity", "price"]].to_dict("records"),
+        "examples": examples,
+        "groups": [{"key": g, "label": GROUP_LABELS[g], "features": [f.key for f in FEATURES if f.group == g]} for g in GROUPS],
+        "features": feature_info,
+        "correlation": np.round(corr, 3).tolist(),
+        "truth": {"types": TYPE_ORDER, "counts": [int((truth == i).sum()) for i in range(len(TYPE_ORDER))]},
+        "baselines": {
+            "abc_xyz_grid": {"rows": ["A", "B", "C"], "cols": ["X", "Y", "Z"],
+                             "counts": crosstab(base["abc"].to_numpy(), base["xyz"].to_numpy(), ["A", "B", "C"], ["X", "Y", "Z"])},
+            "sbc": {"classes": ["smooth", "erratic", "intermittent", "lumpy"],
+                    "counts": [int((base["sbc"] == c).sum()) for c in ["smooth", "erratic", "intermittent", "lumpy"]]},
+            "sbc_points": {"adi": features["adi"].round(3).tolist(), "cv2": features["cv2"].round(3).tolist()},
+            "vs_truth": {
+                name: {"ari": float(adjusted_rand_score(truth, base[col])), "nmi": float(normalized_mutual_info_score(truth, base[col])),
+                       "crosstab": crosstab(base[col].to_numpy(), truth_names, sorted(base[col].unique()), TYPE_ORDER),
+                       "rows": sorted(base[col].unique().tolist())}
+                for name, col in [("abc", "abc"), ("abc_xyz", "abc_xyz"), ("sbc", "sbc")]
+            },
+        },
+        "selection": {f"{m}-{k}": full["clusterings"][f"{m}-{k}"]["metrics"] for m in MODELS for k in K_RANGE},
+        "default": default,
+        "policies": policies,
+        "policy_settings": {"lead_days": ps.LEAD, "review_days": ps.REVIEW, "order_cost": ps.ORDER_COST,
+                            "slot_cost": ps.SLOT_COST, "slow_delivery_loss": ps.SLOW_DELIVERY_LOSS,
+                            "service_levels": ps.SERVICE_LEVELS, "central_region": ps.CENTRAL,
+                            "train_year": 4, "test_year": 5},
+        "k_range": K_RANGE, "models": MODELS,
+        "subset_leaderboard": leaderboard,
+        "built_seconds": round(time.time() - t0, 1),
+    }
+    (out / "overview.json").write_text(json.dumps(overview, separators=(",", ":"), default=str))
+
+    sku_records = []
+    for i, s in enumerate(skus.itertuples()):
+        sku_records.append({
+            "id": int(s.sku_id), "name": s.name, "category": s.category, "true_type": s.true_type, "bulky": bool(s.bulky),
+            "price": float(s.price), "margin": float(s.margin), "launch_day": int(s.launch_day),
+            "features": {f.key: round(float(features.loc[i, f.key]), 4) for f in FEATURES},
+            "abc": base.loc[i, "abc"], "xyz": base.loc[i, "xyz"], "sbc": base.loc[i, "sbc"],
+            "weekly": weekly_all[i].astype(int).tolist(),
+        })
+    (out / "skus.json").write_text(json.dumps(sku_records, separators=(",", ":")))
+
+    gmm = full["clusterings"][f"gmm-{best_k}"]
+    pol = policies[f"cluster-gmm-{best_k}"]
+    card = {
+        "id": "sku-segmentation", "letter": "J", "title": "SKU segmentation", "status": "ready",
+        "question": "Which products behave alike, so each group can get its own stocking and listing policy?",
+        "method": "Unsupervised: k-means and Gaussian mixture on 16 engineered demand, product and basket features",
+        "headline": f"{best_k} clusters; recovers the true types with ARI {gmm['metrics']['ari_truth']:.2f} "
+                    f"(ABC/XYZ {overview['baselines']['vs_truth']['abc_xyz']['ari']:.2f}); "
+                    f"cluster policies cost {pol['total'] / policies['uniform']['total'] - 1:+.1%} vs one policy for all",
+    }
+    (out / "card.json").write_text(json.dumps(card, indent=2))
+    print(json.dumps(card, indent=2))
+    print(f"done in {time.time() - t0:.0f}s")
+
+
+if __name__ == "__main__":
+    main(sys.argv[1], sys.argv[2])
