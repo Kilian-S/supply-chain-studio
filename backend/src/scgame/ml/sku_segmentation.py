@@ -150,7 +150,7 @@ def primary_pattern(z: dict[str, float]) -> str:
     if z["qty_per_line"] > 1.0 and z["adi"] > 0.3:
         return "Bulk orders"
     if z["adi"] > 0.7:
-        return "Rare sellers"
+        return "Intermittent sellers"
     if z["seasonality"] > 0.8:
         return "Seasonal"
     if z["trend"] > 0.8 or z["recent_share"] > 0.9:
@@ -396,10 +396,10 @@ def main(world_dir: str, out_dir: str) -> None:
     gmm = full["clusterings"][f"gmm-{best_k}"]
     pol = policies[f"cluster-gmm-{best_k}"]
     card = {
-        "id": "sku-segmentation", "title": "Product groups", "status": "ready",
+        "id": "sku-segmentation", "title": "Product clustering", "status": "ready",
         "question": "Which products sell alike, so each group can get its own stocking rule?",
         "method": "Clustering",
-        "headline": f"{best_k} groups, stocking cost {abs(pol['total'] / policies['uniform']['total'] - 1):.0%} lower than one rule for all",
+        "headline": f"{best_k} clusters, stocking cost {abs(pol['total'] / policies['uniform']['total'] - 1):.0%} lower than one rule for all",
     }
     (out / "card.json").write_text(json.dumps(card, indent=2))
     print(json.dumps(card, indent=2))

@@ -1,6 +1,9 @@
 /* The single source of visible wording on the model pages. Rules (checked by lexicon.test.ts):
- * plain words on the surface (product, group, stocking rule, test year), percentages for people,
- * technical terms only inside "How it works" drawers, British English, no em or en dashes. */
+ * Kilian's approved vocabulary may appear on the surface (SKU, feature, clustering, k, centroid,
+ * kNN, z-score, PCA, ground truth, purity, ARI, ABC/XYZ, ADI, CV², stocking policy, FC, service
+ * level, fill rate...). Terms on the reading list (GLOSSARY.md: GMM, soft assignment, EM, UMAP, NMI,
+ * silhouette, BIC, bootstrap stability, Syntetos-Boylan) stay inside "How it works" drawers.
+ * British English, no em or en dashes. */
 
 export const pct = (x: number, decimals = 0) => `${(x * 100).toFixed(decimals)}%`
 export const money = (x: number) => (Math.abs(x) >= 1e6 ? `$${(x / 1e6).toFixed(2)}M` : `$${Math.round(x).toLocaleString('en-GB')}`)
@@ -11,11 +14,12 @@ export const TYPE_NAMES: Record<string, string> = {
   seasonal: 'Seasonal',
   trending: 'Growing',
   declining: 'Fading',
-  intermittent: 'Rare',
+  intermittent: 'Intermittent',
   lumpy: 'Bulk orders',
 }
 
 // The seven parts of a product's fingerprint.
+// The seven groups of features.
 export const FINGERPRINT: Record<string, { name: string; text: string }> = {
   volume: { name: 'How much it sells', text: 'Units a week and revenue' },
   variability: { name: 'How steady it is', text: 'How much sales jump around' },
@@ -30,8 +34,8 @@ export const FINGERPRINT: Record<string, { name: string; text: string }> = {
 export const FEATURE_NAMES: Record<string, string> = {
   mean_weekly_units: 'Units a week',
   revenue: 'Revenue',
-  cv2: 'Swings in sales',
-  adi: 'Gap between sales',
+  cv2: 'CV² (swings in sales)',
+  adi: 'ADI (gap between sales)',
   zero_share: 'Weeks without a sale',
   seasonality: 'Seasonal peak',
   trend: 'Growth',
@@ -47,26 +51,27 @@ export const FEATURE_NAMES: Record<string, string> = {
 }
 
 export const COLOUR_BY: Record<string, string> = {
-  cluster: 'Group',
-  true_type: 'True type',
+  cluster: 'Cluster',
+  true_type: 'Ground truth',
   category: 'Category',
 }
 
 export const STOCKING = (mode: string, service: number) =>
-  `${mode === 'central' ? 'Central warehouse only' : 'Every regional warehouse'}, ${pct(service, service > 0.99 ? 1 : 0)} available`
+  `${mode === 'central' ? 'Central FC only' : 'Every regional FC'}, ${pct(service, service > 0.99 ? 1 : 0)} service level`
 
 export const POLICY_NAMES: Record<string, string> = {
-  uniform: 'One rule for every product',
-  all_central: 'Everything in the central warehouse',
-  abc: 'Textbook rule: ABC (3 classes)',
-  abc_xyz: 'Textbook rule: ABC/XYZ (9 classes)',
-  sbc: 'Demand classes (4 classes)',
-  true_type: 'Hidden true types (6, for reference)',
-  per_sku: 'One rule per product (300 rules)',
+  uniform: 'One policy for every SKU',
+  all_central: 'Every SKU in the central FC',
+  abc: 'ABC analysis (3 classes)',
+  abc_xyz: 'ABC/XYZ analysis (9 classes)',
+  sbc: 'Demand classes by ADI and CV² (4)',
+  true_type: 'Ground truth types (6, for reference)',
+  per_sku: 'One policy per SKU (300)',
 }
 
 // Words that must never appear on the visible surface outside a drawer (checked by the test).
-export const BANNED_ON_SURFACE = ['sku', 'cluster', 'ari', 'silhouette', 'bic', 'umap', 'held-out', 'policy', 'z-score']
+// Reading-list terms: allowed in drawers and GLOSSARY.md, not on the surface.
+export const BANNED_ON_SURFACE = ['gmm', 'gaussian mixture', 'soft assignment', 'expectation', 'umap', 'nmi', 'mutual information', 'silhouette', 'bic', 'bootstrap', 'syntetos', 'boylan']
 export const BANNED_SPELLINGS = ['color', 'behavior', 'optimize', 'center', 'analyze', 'minimize', 'maximize', 'catalog', 'modeling', 'labeled']
 
 /** Visible surface strings, collected for the test. */
