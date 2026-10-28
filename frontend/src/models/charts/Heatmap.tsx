@@ -26,7 +26,9 @@ export default function Heatmap({ rows, cols, values, mode, format = (v) => v.to
     <div className="chart heatmap" style={{ maxWidth: width + 8 }}>
       <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={title}>
         {cols.map((c, j) => (
-          <text key={c} className="hm-col" transform={`translate(${rowWidth + j * cell + cell / 2},${colHeight - 6}) rotate(-50)`}>{c}</text>
+          c.length <= 3
+            ? <text key={c} className="hm-col" x={rowWidth + j * cell + cell / 2} y={colHeight - 8} textAnchor="middle">{c}</text>
+            : <text key={c} className="hm-col" transform={`translate(${rowWidth + j * cell + cell / 2},${colHeight - 6}) rotate(-50)`}>{c}</text>
         ))}
         {rows.map((r, i) => (
           <g key={r + i}>
