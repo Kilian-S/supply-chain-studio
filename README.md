@@ -8,7 +8,7 @@ follow (see `PLAN.md`).
 ## Run it
 
 ```bash
-./dev.sh            # API on :8000, web app on http://localhost:5173
+./dev.sh            # API on :8000, web app on http://localhost:5173; Ctrl+C or closing the tab stops both
 ```
 
 Requirements: [uv](https://docs.astral.sh/uv/) and Node.js.
