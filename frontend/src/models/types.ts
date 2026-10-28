@@ -2,7 +2,6 @@
 
 export interface ModelCard {
   id: string
-  letter: string
   title: string
   status: 'ready' | 'planned'
   question: string
@@ -34,6 +33,20 @@ export interface Metrics {
   nmi_truth: number
   policy_cost?: number
   policy_vs_abc_xyz?: number
+  purity: number
+}
+
+export interface GroupStats {
+  mean_weekly_units: number
+  sells_in_weeks: number
+  seasonality: number
+  growth_per_year: number
+  price: number
+  volume_l: number
+  weight_kg: number
+  margin: number
+  solo_share: number
+  qty_per_line: number
 }
 
 export interface PolicyResult {
@@ -53,7 +66,7 @@ export interface PolicyResult {
 }
 
 export interface Overview {
-  model: { id: string; letter: string; title: string }
+  model: { id: string; title: string }
   world: {
     version: number
     counts: Record<string, number>
@@ -72,7 +85,7 @@ export interface Overview {
     abc_xyz_grid: { rows: string[]; cols: string[]; counts: number[][] }
     sbc: { classes: string[]; counts: number[] }
     sbc_points: { adi: number[]; cv2: number[] }
-    vs_truth: Record<string, { ari: number; nmi: number; crosstab: number[][]; rows: string[] }>
+    vs_truth: Record<string, { ari: number; nmi: number; purity: number; groups: number; crosstab: number[][]; rows: string[] }>
   }
   selection: Record<string, Metrics>
   default: { mask: number; model: string; k: number; embedding: string }
@@ -97,6 +110,7 @@ export interface Overview {
     ari_truth: number
     silhouette: number
     stability: number
+    purity: number
     best_policy: string
     policy_vs_abc_xyz: number
   }[]
@@ -110,6 +124,7 @@ export interface Clustering {
   profile: number[][]
   names: string[]
   policy: { mode: string; service: number }[]
+  stats: GroupStats[]
 }
 
 export interface Variant {
