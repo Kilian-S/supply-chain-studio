@@ -20,7 +20,6 @@
   /* SF family only: SF Pro for text, SF Mono for figures (system fonts on Apple devices). */
   --sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'SF Pro', system-ui, sans-serif;
   --mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, monospace;
-  --brand: #ff6b4a;
   color-scheme: light;
 }
 
