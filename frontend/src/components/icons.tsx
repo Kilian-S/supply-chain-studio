@@ -14,11 +14,14 @@ export const StepIcon = ({ size = 16 }: P) => (
 export const CloseIcon = ({ size = 16 }: P) => (
   <svg width={size} height={size} viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
 )
-export const LogoMark = () => (
-  <svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true">
-    <rect x="1" y="1" width="28" height="28" rx="8" fill="#f4b6c7" />
-    <circle cx="11" cy="15" r="5" fill="none" stroke="#1e1b2e" strokeWidth="2.2" />
-    <circle cx="19" cy="15" r="5" fill="none" stroke="#1e1b2e" strokeWidth="2.2" />
+// Brand mark: one factory feeding two warehouses, on the coral brand tile.
+export const LogoMark = ({ size = 30 }: P) => (
+  <svg width={size} height={size} viewBox="0 0 30 30" aria-hidden="true">
+    <rect x="1" y="1" width="28" height="28" rx="8" fill="#ff6b4a" />
+    <path d="M10 20.5 L15 10.5 L20 20.5" fill="none" stroke="#1e1b2e" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+    <rect x="12" y="7.5" width="6" height="6" rx="1.6" fill="#1e1b2e" />
+    <circle cx="9.5" cy="21" r="3.2" fill="#fff" stroke="#1e1b2e" strokeWidth="2" />
+    <circle cx="20.5" cy="21" r="3.2" fill="#fff" stroke="#1e1b2e" strokeWidth="2" />
   </svg>
 )
 

@@ -17,8 +17,10 @@
   --warn-bg: #fff4e0;
   --shadow: 4px 5px 0 rgba(30, 27, 46, 0.16);
   --radius: 12px;
-  --mono: 'DM Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
-  --sans: 'Space Grotesk', system-ui, -apple-system, sans-serif;
+  /* SF family only: SF Pro for text, SF Mono for figures (system fonts on Apple devices). */
+  --sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'SF Pro', system-ui, sans-serif;
+  --mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, monospace;
+  --brand: #ff6b4a;
   color-scheme: light;
 }
 

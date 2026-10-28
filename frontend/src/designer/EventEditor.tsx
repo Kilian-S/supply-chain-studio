@@ -168,7 +168,7 @@ export default function EventEditor({ event: e, regions, startDay, endDay, onCha
         )}
         <label className="field" style={{ gridColumn: 'span 2' }}>
           Note shown to the player
-          <input className="input" style={{ fontFamily: 'var(--sans)' }} value={e.description} onChange={(x) => set({ description: x.target.value })} />
+          <input className="input sans" value={e.description} onChange={(x) => set({ description: x.target.value })} />
         </label>
       </div>
     </div>
