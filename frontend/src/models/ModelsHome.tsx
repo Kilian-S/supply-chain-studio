@@ -4,13 +4,13 @@ import { listModels, type ModelCard } from './types'
 
 // The models chosen in ML_ROADMAP.md, in storyline order. Cards for built ones come from the backend.
 const PLANNED: ModelCard[] = [
-  { id: 'sku-segmentation', title: 'Product groups', status: 'planned', question: 'Which products sell alike, so each group can get its own stocking rule?', method: 'Clustering' },
-  { id: 'product-affinity', title: 'Bought together', status: 'planned', question: 'Which products are bought together, so they should be stored together?', method: 'Clustering' },
+  { id: 'sku-segmentation', title: 'SKU clustering', status: 'planned', question: 'Which SKUs sell alike, so each cluster can get its own stocking policy?', method: 'Clustering' },
+  { id: 'product-affinity', title: 'Bought together', status: 'planned', question: 'Which SKUs are bought together, so they should be stored in the same FC?', method: 'Clustering' },
   { id: 'demand-forecast', title: 'Demand five years out', status: 'planned', question: 'How much will each region and product sell over five years, and how sure are we?', method: 'Forecasting' },
   { id: 'new-region-demand', title: 'Demand in a new region', status: 'planned', question: 'How much would a new region bring before it has any history?', method: 'Prediction' },
-  { id: 'what-if-surrogate', title: 'Instant what-if', status: 'planned', question: 'Expand warehouse A or B: what happens to cost and service?', method: 'Prediction from simulation' },
-  { id: 'risk-classifier', title: 'Risk of split orders', status: 'planned', question: 'Which orders and products are at risk under a planned network?', method: 'Classification' },
-  { id: 'network-design', title: 'Network plan', status: 'planned', question: 'Where to open or expand warehouses, and by how much, over five years?', method: 'Optimisation' },
+  { id: 'what-if-surrogate', title: 'Instant what-if', status: 'planned', question: 'Expand FC A or FC B: what happens to cost and service level?', method: 'Prediction from simulation' },
+  { id: 'risk-classifier', title: 'Risk of split orders', status: 'planned', question: 'Which orders and SKUs are at risk under a planned network?', method: 'Classification' },
+  { id: 'network-design', title: 'Network plan', status: 'planned', question: 'Where to open or expand FCs, and by how much, over five years?', method: 'Optimisation' },
 ]
 
 export default function ModelsHome() {

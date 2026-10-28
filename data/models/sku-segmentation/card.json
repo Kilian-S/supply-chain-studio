@@ -1,8 +1,8 @@
 {
   "id": "sku-segmentation",
-  "title": "Product groups",
+  "title": "Product clustering",
   "status": "ready",
   "question": "Which products sell alike, so each group can get its own stocking rule?",
   "method": "Clustering",
-  "headline": "8 groups, stocking cost 11% lower than one rule for all"
+  "headline": "8 clusters, stocking cost 11% lower than one rule for all"
 }

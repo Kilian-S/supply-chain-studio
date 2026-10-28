@@ -1,53 +1,53 @@
-// Visible wording of the product groups page. Short: a label, a headline, a caption per screen.
+// Visible wording of the SKU clustering page. Short: a label, a headline, a caption per screen.
 
 export const COPY = {
-  title: 'Grouping products by how they sell',
-  intro: 'Three hundred products, five years of orders. One stocking rule per group instead of one per product.',
+  title: 'Clustering SKUs by how they sell',
+  intro: '300 SKUs, five years of orders. One stocking policy per cluster instead of one per SKU.',
   screens: {
     question: {
       label: 'The question',
-      headline: 'Products sell in very different ways.',
-      caption: 'Weekly sales of six typical products over four years. Each was built with a hidden type the model never sees.',
+      headline: 'SKUs sell in very different ways.',
+      caption: 'Weekly sales of six typical SKUs over the training set. Each was generated with a hidden type: the ground truth the model never sees.',
     },
     data: {
       label: 'The data',
       headline: 'Five years of orders from our simulated shop.',
-      caption: 'The model learns from years 1 to 4. Year 5 is kept back to test the stocking rules.',
+      caption: 'The model learns on the training set (years 1 to 4). The test set (year 5) is kept back to price the stocking policies.',
     },
     fingerprint: {
-      label: 'What we measure',
-      headline: 'Each product becomes a fingerprint of 16 numbers.',
-      caption: 'Pick a product to see where it ranks among all 300 on each number.',
+      label: 'Feature engineering',
+      headline: 'Each SKU becomes a feature vector of 16 features.',
+      caption: 'Pick a SKU to see where it ranks among all 300 on each feature.',
     },
     map: {
-      label: 'The map',
-      headline: 'Products that sell alike end up close together.',
-      caption: 'Each dot is a product. Drag to turn, scroll to zoom, click a dot for details.',
+      label: 'The embedding',
+      headline: 'SKUs that sell alike end up close together.',
+      caption: 'Each dot is a SKU, placed by dimensionality reduction of its 16 features. Drag to turn, scroll to zoom, click a dot for details.',
     },
     groups: {
-      label: 'The groups',
-      headline: 'Every group gets its own stocking rule.',
-      caption: 'Typical values per group. The stocking rule is the cheapest one on year 4.',
+      label: 'The clusters',
+      headline: 'Every cluster gets its own stocking policy.',
+      caption: 'Median values per cluster. The stocking policy is the cheapest one on the training set.',
     },
     truth: {
-      label: 'Did it find the truth?',
-      headline: 'The groups match the hidden types better than the textbook rule.',
-      caption: 'Share of products sitting in a group dominated by their own true type.',
+      label: 'Ground truth',
+      headline: 'The clusters match the ground truth better than ABC/XYZ analysis.',
+      caption: 'Purity: share of SKUs sitting in a cluster dominated by their own true type. ARI: agreement corrected for chance (1 is perfect, 0 is chance).',
     },
     worth: {
       label: 'What it is worth',
-      headline: 'Group rules cut stocking cost by a tenth.',
-      caption: 'Rules chosen on year 4, then tested on year 5, which no step had seen.',
+      headline: 'Cluster policies cut stocking cost by a tenth.',
+      caption: 'Policies chosen on year 4 of the training set, then priced on the test set, which no step had seen.',
     },
     learned: {
       label: 'What we learned',
-      headline: 'Grouping pays, and the fingerprint decides what a group means.',
+      headline: 'Clustering pays, and feature choice decides what a cluster means.',
     },
   },
   learned: [
-    'Grouping saves money: about a tenth less than one rule for every product.',
-    'Fingerprints without size and price find the hidden types best; size and price make the cheapest rules.',
-    'A new product gets a rule on day one from its group. One rule per product needs years of history.',
+    'Cluster policies cost about a tenth less than one stocking policy for every SKU.',
+    'Features without size and price recover the ground truth best; size and price give the cheapest policies.',
+    'A new SKU gets a policy from its cluster on day one. One policy per SKU needs years of history and risks overfitting.',
   ],
   howItWorks: 'How it works',
   get surface(): string[] {

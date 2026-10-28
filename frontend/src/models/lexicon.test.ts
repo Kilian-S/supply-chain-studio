@@ -6,7 +6,7 @@ const visible = [...SURFACE, ...COPY.surface]
 
 describe('model page wording', () => {
   it('keeps jargon off the surface', () => {
-    for (const s of visible) for (const w of BANNED_ON_SURFACE) expect(s.toLowerCase(), s).not.toMatch(new RegExp(`\\b${w}\\b`))
+    for (const s of visible) for (const w of BANNED_ON_SURFACE) expect(s.toLowerCase(), s).not.toMatch(new RegExp(`\\b${w}`))
   })
   it('uses British spelling', () => {
     for (const s of visible) for (const w of BANNED_SPELLINGS) expect(s.toLowerCase(), s).not.toMatch(new RegExp(`\\b${w}`))
