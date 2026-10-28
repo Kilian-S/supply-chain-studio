@@ -12,24 +12,47 @@ import HQPanel from './components/panels/HQPanel'
 import { CashPanel, HistoryPanel, OverviewPanel } from './components/panels/InfoPanels'
 import RegionPanel from './components/panels/RegionPanel'
 import WarehousePanel from './components/panels/WarehousePanel'
+import ModelsHome from './models/ModelsHome'
+import SkuSegmentationPage from './models/sku/SkuSegmentationPage'
 
 type View = 'map' | 'history' | 'cash'
 
 type Screen = { kind: 'start' } | { kind: 'design'; id: string; taken: string[] } | { kind: 'play'; run: RunState }
 
+function useHash() {
+  const [hash, setHash] = useState(window.location.hash)
+  useEffect(() => {
+    const on = () => setHash(window.location.hash)
+    window.addEventListener('hashchange', on)
+    return () => window.removeEventListener('hashchange', on)
+  }, [])
+  return hash
+}
+
 export default function App() {
+  const hash = useHash()
   const [screen, setScreen] = useState<Screen>({ kind: 'start' })
   const toStart = () => setScreen({ kind: 'start' })
   const play = (run: RunState) => setScreen({ kind: 'play', run })
-  if (screen.kind === 'play') {
+  const inModels = hash.startsWith('#/models')
+  if (!inModels && screen.kind === 'play') {
     return <div className="app"><Game key={screen.run.run_id} initial={screen.run} onExit={toStart} /></div>
   }
+  let body: React.ReactNode
+  if (hash.startsWith('#/models/sku-segmentation')) body = <SkuSegmentationPage />
+  else if (inModels) body = <ModelsHome />
+  else if (screen.kind === 'design') body = <Designer key={screen.id} scenarioId={screen.id} takenIds={screen.taken} onBack={toStart} onPlay={play} />
+  else body = <StartScreen onStart={play} onDesign={(id, taken) => setScreen({ kind: 'design', id, taken })} />
   return (
     <div className="app">
-      <header className="topbar"><div className="brand"><LogoMark />Supply Chain Studio</div></header>
-      {screen.kind === 'design'
-        ? <Designer key={screen.id} scenarioId={screen.id} takenIds={screen.taken} onBack={toStart} onPlay={play} />
-        : <StartScreen onStart={play} onDesign={(id, taken) => setScreen({ kind: 'design', id, taken })} />}
+      <header className="topbar">
+        <a className="brand" href="#/" onClick={toStart}><LogoMark />Supply Chain Studio</a>
+        <nav className="topnav" aria-label="Sections">
+          <a className="navlink" href="#/" aria-current={!inModels ? 'page' : undefined}>Simulation</a>
+          <a className="navlink" href="#/models" aria-current={inModels ? 'page' : undefined}>Models</a>
+        </nav>
+      </header>
+      <div className={inModels ? 'page-scroll' : 'page-fill'}>{body}</div>
     </div>
   )
 }
@@ -134,7 +157,10 @@ function Game({ initial, onExit }: { initial: RunState; onExit: () => void }) {
           <div className="kpi"><span>FILL RATE</span><span>{s.demand ? pct(s.fill_rate) : 'n/a'}</span></div>
           <div className="kpi"><span>LOST DRUMS</span><span>{num(s.lost)}</span></div>
         </div>
-        <div className="topnav"><button onClick={() => { setPlaying(false); onExit() }}>New run</button></div>
+        <div className="topnav">
+          <a className="navlink" href="#/models" target="_blank" rel="noreferrer">Models</a>
+          <button onClick={() => { setPlaying(false); onExit() }}>New run</button>
+        </div>
       </header>
       <main className="main">
         <section className="stage" aria-label="Network map">
