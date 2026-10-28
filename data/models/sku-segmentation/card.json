@@ -1,9 +1,8 @@
 {
   "id": "sku-segmentation",
-  "letter": "J",
-  "title": "SKU segmentation",
+  "title": "Product groups",
   "status": "ready",
-  "question": "Which products behave alike, so each group can get its own stocking and listing policy?",
-  "method": "Unsupervised: k-means and Gaussian mixture on 16 engineered demand, product and basket features",
-  "headline": "8 clusters; recovers the true types with ARI 0.42 (ABC/XYZ 0.33); cluster policies cost -11.2% vs one policy for all"
+  "question": "Which products sell alike, so each group can get its own stocking rule?",
+  "method": "Clustering",
+  "headline": "8 groups, stocking cost 11% lower than one rule for all"
 }

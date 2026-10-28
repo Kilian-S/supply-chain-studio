@@ -2,37 +2,51 @@ import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 
-interface Props {
-  coords: number[][] // n x 3 (or n x 2)
+/* A Projector-style 3D point cloud. Built to behave the same in Safari and Chrome:
+ * the canvas is absolutely positioned (never feeds back into layout), points are drawn by a small
+ * shader (no textures), picking is done in screen space, and a failed WebGL start shows a message. */
+
+export interface ProjectorProps {
+  coords: number[][]
   colors: string[]
-  labels: string[]
+  keys: string[] // colour key per point, used for the group labels
+  labelFor: Record<string, string>
+  tooltip: (i: number) => string
   selected: number | null
   neighbours: number[]
-  dimmed: boolean[] | null // points to fade (e.g. other clusters when one is isolated)
-  flat: boolean
+  isolate: string | null
   autoRotate: boolean
   onSelect: (i: number | null) => void
 }
 
-function dotTexture() {
-  const c = document.createElement('canvas')
-  c.width = c.height = 64
-  const g = c.getContext('2d')!
-  g.beginPath()
-  g.arc(32, 32, 28, 0, Math.PI * 2)
-  g.fillStyle = '#ffffff'
-  g.fill()
-  g.lineWidth = 5
-  g.strokeStyle = 'rgba(30,27,46,0.55)'
-  g.stroke()
-  const t = new THREE.CanvasTexture(c)
-  t.colorSpace = THREE.SRGBColorSpace
-  return t
-}
+const VERT = `
+attribute vec3 aColor;
+attribute float aAlpha;
+uniform float uSize;
+uniform float uScale;
+varying vec3 vColor;
+varying float vAlpha;
+void main() {
+  vec4 mv = modelViewMatrix * vec4(position, 1.0);
+  gl_PointSize = max(2.0, uSize * uScale / -mv.z);
+  gl_Position = projectionMatrix * mv;
+  vColor = aColor;
+  vAlpha = aAlpha;
+}`
+const FRAG = `
+precision mediump float;
+varying vec3 vColor;
+varying float vAlpha;
+void main() {
+  vec2 c = gl_PointCoord - vec2(0.5);
+  float d = length(c);
+  if (d > 0.5) discard;
+  vec3 col = d > 0.38 ? vColor * 0.72 : vColor;
+  gl_FragColor = vec4(col, vAlpha * (1.0 - smoothstep(0.46, 0.5, d)));
+}`
 
-// Centre on the core of the cloud (points inside the 10-90% band on every axis) and scale so that
-// band spans about 2 units on its widest axis. Points far outside are pulled in on a log curve, so a
-// distant group stays visible at the edge instead of shrinking everything else to a dot.
+// Centre on the core of the cloud and scale so its 10-90% band spans about two units; points far
+// outside are pulled in on a log curve so a distant group stays visible at the edge.
 function normalise(coords: number[][]): Float32Array {
   const n = coords.length
   const out = new Float32Array(n * 3)
@@ -52,158 +66,243 @@ function normalise(coords: number[][]): Float32Array {
   return out
 }
 
-export default function Projector({ coords, colors, labels, selected, neighbours, dimmed, flat, autoRotate, onSelect }: Props) {
-  const host = useRef<HTMLDivElement>(null)
-  const three = useRef<{
-    renderer: THREE.WebGLRenderer; scene: THREE.Scene; camera: THREE.PerspectiveCamera; controls: OrbitControls
-    points: THREE.Points; marker: THREE.Points; links: THREE.LineSegments; positions: Float32Array; raf: number
-  } | null>(null)
-  const [hover, setHover] = useState<{ i: number; x: number; y: number } | null>(null)
-  const latest = useRef({ labels, onSelect })
-  latest.current = { labels, onSelect }
+const rgb = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+const HOME = new THREE.Vector3(2.1, 1.3, 2.5)
 
-  // Set up the scene once.
+export default function Projector(props: ProjectorProps) {
+  const host = useRef<HTMLDivElement>(null)
+  const labelLayer = useRef<HTMLDivElement>(null)
+  const [failed, setFailed] = useState<string | null>(null)
+  const [tip, setTip] = useState<{ i: number; x: number; y: number } | null>(null)
+  const live = useRef(props)
+  live.current = props
+  const world = useRef<{
+    renderer: THREE.WebGLRenderer; camera: THREE.PerspectiveCamera; controls: OrbitControls
+    points: THREE.Points; marker: THREE.Points; links: THREE.LineSegments
+    pos: Float32Array; centroids: { key: string; p: THREE.Vector3; el: HTMLDivElement }[]
+  } | null>(null)
+
+  // Scene, once.
   useEffect(() => {
     const el = host.current!
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-    el.appendChild(renderer.domElement)
+    let renderer: THREE.WebGLRenderer
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false })
+    } catch (e) {
+      setFailed(`This browser could not start 3D graphics (${(e as Error).message}).`)
+      return
+    }
+    renderer.setClearColor('#fbfbfd', 1)
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
+    el.prepend(renderer.domElement)
     const scene = new THREE.Scene()
-    const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 100)
-    camera.position.set(2.0, 1.4, 2.4)
+    const camera = new THREE.PerspectiveCamera(42, 1, 0.01, 100)
+    camera.position.copy(HOME)
     const controls = new OrbitControls(camera, renderer.domElement)
     controls.enableDamping = true
     controls.dampingFactor = 0.08
-    controls.autoRotateSpeed = 0.8
+    controls.autoRotateSpeed = 0.7
+    controls.minDistance = 0.6
+    controls.maxDistance = 8
 
-    const tex = dotTexture()
-    const geo = new THREE.BufferGeometry()
-    const points = new THREE.Points(geo, new THREE.PointsMaterial({ size: 0.085, map: tex, vertexColors: true, transparent: true, alphaTest: 0.3, sizeAttenuation: true }))
+    const mat = new THREE.ShaderMaterial({
+      vertexShader: VERT, fragmentShader: FRAG, transparent: true, depthWrite: false,
+      uniforms: { uSize: { value: 0.06 }, uScale: { value: 300 } },
+    })
+    const points = new THREE.Points(new THREE.BufferGeometry(), mat)
     scene.add(points)
     const markerGeo = new THREE.BufferGeometry()
     markerGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(3), 3))
-    const marker = new THREE.Points(markerGeo, new THREE.PointsMaterial({ size: 0.2, map: tex, color: '#1e1b2e', transparent: true, alphaTest: 0.3 }))
+    markerGeo.setAttribute('aColor', new THREE.BufferAttribute(new Float32Array([0.12, 0.11, 0.18]), 3))
+    markerGeo.setAttribute('aAlpha', new THREE.BufferAttribute(new Float32Array([1]), 1))
+    const markerMat = mat.clone()
+    markerMat.uniforms.uSize.value = 0.11
+    markerMat.depthTest = false
+    const marker = new THREE.Points(markerGeo, markerMat)
     marker.visible = false
+    marker.renderOrder = 2
     scene.add(marker)
-    const links = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: '#1e1b2e', transparent: true, opacity: 0.55 }))
+    const links = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: '#1e1b2e', transparent: true, opacity: 0.6 }))
     scene.add(links)
-    const axesGeo = new THREE.BufferGeometry()
-    axesGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([-1.1, 0, 0, 1.1, 0, 0, 0, -1.1, 0, 0, 1.1, 0, 0, 0, -1.1, 0, 0, 1.1]), 3))
-    const axes = new THREE.LineSegments(axesGeo, new THREE.LineBasicMaterial({ color: '#d6d3e2' }))
-    scene.add(axes)
+    const grid = new THREE.GridHelper(4, 8, '#dcdbe6', '#ececf3')
+    grid.position.y = -1.3
+    scene.add(grid)
 
     const resize = () => {
-      const w = el.clientWidth, h = el.clientHeight
-      renderer.setSize(w, h)
+      const w = Math.max(el.clientWidth, 1), h = Math.max(el.clientHeight, 1)
+      renderer.setSize(w, h, false) // never touch the canvas CSS size: no layout feedback
       camera.aspect = w / h
       camera.updateProjectionMatrix()
+      mat.uniforms.uScale.value = h * renderer.getPixelRatio() * 0.5
+      markerMat.uniforms.uScale.value = mat.uniforms.uScale.value
     }
     const ro = new ResizeObserver(resize)
     ro.observe(el)
     resize()
 
-    const ray = new THREE.Raycaster()
-    ray.params.Points = { threshold: 0.04 }
-    const mouse = new THREE.Vector2()
-    let down = { x: 0, y: 0 }
-    const pick = (e: PointerEvent) => {
-      const r = renderer.domElement.getBoundingClientRect()
-      mouse.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1)
-      ray.setFromCamera(mouse, camera)
-      const hit = ray.intersectObject(points)[0]
-      return { hit: hit?.index ?? null, x: e.clientX - r.left, y: e.clientY - r.top }
+    const onContextLost = (e: Event) => { e.preventDefault(); setFailed('The graphics context was lost. Reload the page to restore the map.') }
+    renderer.domElement.addEventListener('webglcontextlost', onContextLost)
+
+    // Screen-space picking: nearest projected point within 14 px.
+    const v = new THREE.Vector3()
+    const pick = (cx: number, cy: number) => {
+      const w = world.current
+      if (!w) return null
+      const r = el.getBoundingClientRect()
+      let best = -1, bestD = 14 * 14
+      for (let i = 0; i < w.pos.length / 3; i++) {
+        v.set(w.pos[i * 3], w.pos[i * 3 + 1], w.pos[i * 3 + 2]).project(camera)
+        if (v.z > 1) continue
+        const dx = (v.x * 0.5 + 0.5) * r.width - (cx - r.left)
+        const dy = (-v.y * 0.5 + 0.5) * r.height - (cy - r.top)
+        const d = dx * dx + dy * dy
+        if (d < bestD) { bestD = d; best = i }
+      }
+      return best < 0 ? null : best
     }
+    let down = { x: 0, y: 0 }
     const onMove = (e: PointerEvent) => {
-      const p = pick(e)
-      setHover(p.hit == null ? null : { i: p.hit, x: p.x, y: p.y })
-      renderer.domElement.style.cursor = p.hit == null ? 'grab' : 'pointer'
+      const i = pick(e.clientX, e.clientY)
+      const r = el.getBoundingClientRect()
+      setTip(i == null ? null : { i, x: e.clientX - r.left, y: e.clientY - r.top })
+      renderer.domElement.style.cursor = i == null ? 'grab' : 'pointer'
     }
     const onDown = (e: PointerEvent) => { down = { x: e.clientX, y: e.clientY } }
     const onUp = (e: PointerEvent) => {
-      if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) return // a drag, not a click
-      latest.current.onSelect(pick(e).hit)
+      if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5) return
+      live.current.onSelect(pick(e.clientX, e.clientY))
     }
+    const onLeave = () => setTip(null)
     renderer.domElement.addEventListener('pointermove', onMove)
     renderer.domElement.addEventListener('pointerdown', onDown)
     renderer.domElement.addEventListener('pointerup', onUp)
-    renderer.domElement.addEventListener('pointerleave', () => setHover(null))
+    renderer.domElement.addEventListener('pointerleave', onLeave)
 
-    const state = { renderer, scene, camera, controls, points, marker, links, positions: new Float32Array(0), raf: 0 }
+    world.current = { renderer, camera, controls, points, marker, links, pos: new Float32Array(0), centroids: [] }
+
+    let raf = 0
     const loop = () => {
+      controls.autoRotate = live.current.autoRotate && live.current.selected == null
       controls.update()
       renderer.render(scene, camera)
-      state.raf = requestAnimationFrame(loop)
+      const w = world.current
+      if (w) {
+        // Project each group label, then push overlapping labels apart vertically.
+        const r = el.getBoundingClientRect()
+        const placed: { x: number; y: number; w: number; h: number }[] = []
+        const items = w.centroids.map((c) => {
+          v.copy(c.p).project(camera)
+          return { c, x: (v.x * 0.5 + 0.5) * r.width, y: (-v.y * 0.5 + 0.5) * r.height - 18, hidden: v.z > 1 || (live.current.isolate != null && live.current.isolate !== c.key) }
+        }).sort((a, b) => a.y - b.y)
+        for (const it of items) {
+          it.c.el.style.display = it.hidden ? 'none' : 'block'
+          if (it.hidden) continue
+          const wdt = it.c.el.offsetWidth, hgt = it.c.el.offsetHeight
+          let y = it.y
+          for (let guard = 0; guard < 12; guard++) {
+            const hit = placed.find((p) => Math.abs(p.x - it.x) < (p.w + wdt) / 2 + 4 && Math.abs(p.y - y) < (p.h + hgt) / 2 + 2)
+            if (!hit) break
+            y = hit.y + (hit.h + hgt) / 2 + 3
+          }
+          placed.push({ x: it.x, y, w: wdt, h: hgt })
+          it.c.el.style.transform = `translate(${it.x - wdt / 2}px, ${y - hgt / 2}px)`
+        }
+      }
+      raf = requestAnimationFrame(loop)
     }
     loop()
-    three.current = state
+
     return () => {
-      cancelAnimationFrame(state.raf)
+      cancelAnimationFrame(raf)
       ro.disconnect()
       controls.dispose()
+      renderer.domElement.removeEventListener('webglcontextlost', onContextLost)
       renderer.dispose()
-      geo.dispose()
-      tex.dispose()
-      el.removeChild(renderer.domElement)
-      three.current = null
+      renderer.domElement.remove()
+      world.current = null
     }
   }, [])
 
-  // Points, colours and fading.
+  // Points, colours, isolation and group labels.
+  const { coords, colors, keys, labelFor, isolate } = props
   useEffect(() => {
-    const t = three.current
-    if (!t) return
-    const pos = normalise(flat ? coords.map((p) => [p[0], p[1], 0]) : coords)
-    t.positions = pos
+    const w = world.current
+    if (!w) return
+    const pos = normalise(coords)
+    w.pos = pos
     const col = new Float32Array(coords.length * 3)
-    const c = new THREE.Color()
-    const paper = new THREE.Color('#f5f4f8')
+    const alpha = new Float32Array(coords.length)
     colors.forEach((hex, i) => {
-      c.set(hex)
-      if (dimmed && dimmed[i]) c.lerp(paper, 0.82)
-      col.set([c.r, c.g, c.b], i * 3)
+      col.set(rgb(hex), i * 3)
+      alpha[i] = isolate == null || keys[i] === isolate ? 0.95 : 0.12
     })
-    const g = t.points.geometry
+    const g = w.points.geometry
     g.setAttribute('position', new THREE.BufferAttribute(pos, 3))
-    g.setAttribute('color', new THREE.BufferAttribute(col, 3))
+    g.setAttribute('aColor', new THREE.BufferAttribute(col, 3))
+    g.setAttribute('aAlpha', new THREE.BufferAttribute(alpha, 1))
     g.computeBoundingSphere()
-  }, [coords, colors, dimmed, flat])
+    const layer = labelLayer.current!
+    layer.replaceChildren()
+    const sums = new Map<string, { s: THREE.Vector3; n: number }>()
+    keys.forEach((k, i) => {
+      const e = sums.get(k) ?? { s: new THREE.Vector3(), n: 0 }
+      e.s.add(new THREE.Vector3(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]))
+      e.n += 1
+      sums.set(k, e)
+    })
+    w.centroids = [...sums.entries()].map(([key, { s, n }]) => {
+      const div = document.createElement('div')
+      div.className = 'proj-label'
+      div.textContent = labelFor[key] ?? key
+      layer.appendChild(div)
+      return { key, p: s.divideScalar(n), el: div }
+    })
+  }, [coords, colors, keys, labelFor, isolate])
 
-  // Camera mode.
+  // Selection marker and lines to the nearest neighbours.
+  const { selected, neighbours } = props
   useEffect(() => {
-    const t = three.current
-    if (!t) return
-    t.controls.enableRotate = !flat
-    t.controls.autoRotate = autoRotate && !flat
-    if (flat) {
-      t.camera.position.set(0, 0, 3)
-      t.controls.target.set(0, 0, 0)
-    }
-  }, [flat, autoRotate])
-
-  // Selection marker and neighbour links.
-  useEffect(() => {
-    const t = three.current
-    if (!t || !t.positions.length) return
+    const w = world.current
+    if (!w || !w.pos.length) return
     if (selected == null) {
-      t.marker.visible = false
-      t.links.geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3))
+      w.marker.visible = false
+      w.links.geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3))
       return
     }
-    const p = t.positions.subarray(selected * 3, selected * 3 + 3)
-    ;(t.marker.geometry.getAttribute('position') as THREE.BufferAttribute).set(p)
-    t.marker.geometry.getAttribute('position').needsUpdate = true
-    t.marker.visible = true
+    const p = w.pos.subarray(selected * 3, selected * 3 + 3)
+    ;(w.marker.geometry.getAttribute('position') as THREE.BufferAttribute).set(p)
+    w.marker.geometry.getAttribute('position').needsUpdate = true
+    w.marker.visible = true
     const seg = new Float32Array(neighbours.length * 6)
-    neighbours.forEach((j, k) => {
-      seg.set(p, k * 6)
-      seg.set(t.positions.subarray(j * 3, j * 3 + 3), k * 6 + 3)
-    })
-    t.links.geometry.setAttribute('position', new THREE.BufferAttribute(seg, 3))
-  }, [selected, neighbours, coords, flat])
+    neighbours.forEach((j, k) => { seg.set(p, k * 6); seg.set(w.pos.subarray(j * 3, j * 3 + 3), k * 6 + 3) })
+    w.links.geometry.setAttribute('position', new THREE.BufferAttribute(seg, 3))
+  }, [selected, neighbours, coords])
+
+  const zoom = (f: number) => {
+    const w = world.current
+    if (w) w.camera.position.sub(w.controls.target).multiplyScalar(f).add(w.controls.target)
+  }
+  const reset = () => {
+    const w = world.current
+    if (!w) return
+    w.controls.target.set(0, 0, 0)
+    w.camera.position.copy(HOME)
+  }
 
   return (
-    <div className="projector" ref={host}>
-      {hover && <div className="tooltip" style={{ left: hover.x + 12, top: hover.y + 12 }}>{labels[hover.i]}</div>}
+    <div className="proj" ref={host}>
+      <div ref={labelLayer} aria-hidden="true" />
+      {failed && <div className="proj-fallback">{failed}</div>}
+      {tip && !failed && (
+        <div className="proj-tip" style={{ left: Math.min(tip.x + 14, (host.current?.clientWidth ?? 600) - 220), top: tip.y + 14 }}>{props.tooltip(tip.i)}</div>
+      )}
+      {!failed && (
+        <div className="proj-tools">
+          <button aria-label="Zoom in" onClick={() => zoom(0.8)}>+</button>
+          <button aria-label="Zoom out" onClick={() => zoom(1.25)}>&minus;</button>
+          <button aria-label="Reset view" title="Reset view" onClick={reset}>&#8634;</button>
+        </div>
+      )}
     </div>
   )
 }
