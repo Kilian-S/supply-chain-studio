@@ -1,8 +1,9 @@
 # lifecycle.sh: the terminal tab owns the servers.
 #
 # Source it from a start script, call `lifecycle_init "$0" "$@"` before starting anything, start the
-# servers in the background, then call `lifecycle_wait`. Pressing Ctrl+C, closing the terminal tab,
-# or the script dying in any other way stops every process the script started, helpers included.
+# servers in the background, then call `lifecycle_wait <server pids>`. Pressing Ctrl+C, closing the
+# terminal tab, the servers being stopped from elsewhere, or the script dying in any other way stops
+# every process the script started, helpers included.
 #
 # How: the script runs as its own process group, and every server and helper it starts joins that
 # group. On Ctrl+C or a closed tab (SIGINT, SIGHUP, SIGTERM) the script signals the whole group. A
@@ -58,8 +59,10 @@ lifecycle_stop() {
 }
 
 lifecycle_wait() {
+  # Pass the pids of the server jobs. Helpers that never end on their own (log tails) are left out,
+  # so the script also ends, and takes the helpers with it, when the servers are stopped elsewhere.
   echo ""
   echo "Running. Press Ctrl+C or close this terminal tab to stop everything."
-  # `wait` returns as soon as a trapped signal arrives, or when every server has exited.
-  wait
+  # `wait` returns as soon as a trapped signal arrives, or when the given servers have exited.
+  wait "$@"
 }
