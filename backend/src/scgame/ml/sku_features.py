@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 from statsmodels.tsa.seasonal import STL
 
-TRAIN_END = 4 * 365  # days 1..1460 train, 1461..1825 test
+TRAIN_END = 3 * 365  # days 1..1095 training set; year 4 (1096..1460) validation set; year 5 test set
 
 
 @dataclass(frozen=True)

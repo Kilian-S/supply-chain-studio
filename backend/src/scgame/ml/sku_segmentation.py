@@ -26,7 +26,7 @@ from sklearn.mixture import GaussianMixture
 from sklearn.neighbors import NearestNeighbors
 
 from . import policy_sim as ps
-from .sku_features import FEATURES, GROUP_LABELS, GROUPS, TRAIN_END, build_features, transform, weekly_matrix
+from .sku_features import FEATURES, _seasonal_strength, GROUP_LABELS, GROUPS, TRAIN_END, build_features, transform, weekly_matrix
 
 K_RANGE = list(range(2, 11))
 MODELS = ["kmeans", "gmm"]
@@ -136,54 +136,90 @@ def run_variant(mask: int, features: pd.DataFrame, truth: np.ndarray, full_z: np
 # Naming and policies
 # =================================================================================================
 
-QUALIFIERS = [  # (features averaged, word if high, word if low)
-    (("volume_l", "weight_kg"), "bulky", "small"),
-    (("margin",), "high margin", "low margin"),
-    (("price",), "premium", "budget"),
-    (("solo_share",), "bought alone", "bought with others"),
-    (("seasonality",), "seasonal", None),
+# Pattern words, the same six as the demand types on the page. Each SKU gets one from fixed cut-offs
+# on its own features (checked in this order); the ground truth is never used.
+BULK_UNITS_PER_LINE = 5.0  # units per order line
+INTERMITTENT_ZERO_SHARE = 0.15  # share of weeks on sale without a sale
+GROWING_PER_YEAR, FADING_PER_YEAR = 0.30, -0.20  # growth per year
+SEASONAL_SHUFFLES = 19  # seasonal only if stronger than every shuffled copy of its own sales (p < 0.05)
+MAJORITY = 0.6  # a cluster takes a pattern word only if this share of its SKUs carry it
+
+
+def seasonal_test(series: np.ndarray, seed: int) -> bool:
+    """Is the yearly pattern stronger than in every random reshuffle of the same weekly sales?"""
+    real = _seasonal_strength(series)
+    if real == 0.0:
+        return False
+    rng = np.random.default_rng(seed)
+    return all(_seasonal_strength(rng.permutation(series)) < real for _ in range(SEASONAL_SHUFFLES))
+
+
+def sku_pattern(f: pd.Series, seasonal: bool) -> str:
+    growth = np.exp(f["trend"]) - 1
+    if f["qty_per_line"] >= BULK_UNITS_PER_LINE:
+        return "Bulk orders"
+    # Life cycle before intermittency: a SKU ramping up from zero has many empty weeks early on.
+    if growth >= GROWING_PER_YEAR:
+        return "Growing"
+    if growth <= FADING_PER_YEAR:
+        return "Fading"
+    if f["zero_share"] >= INTERMITTENT_ZERO_SHARE:
+        return "Intermittent"
+    if seasonal:
+        return "Seasonal"
+    return "Steady"
+
+
+# Traits for names, each tied to the feature group it comes from: (group, features, word if high, word if low).
+TRAITS = [
+    ("volume", ("mean_weekly_units",), "fast", "slow"),
+    ("variability", ("cv2",), "erratic", "stable"),
+    ("intermittency", ("zero_share",), "sporadic", "regular"),
+    ("physical", ("volume_l", "weight_kg"), "bulky", "small"),
+    ("economic", ("price",), "premium", "budget"),
+    ("economic", ("margin",), "high margin", "low margin"),
+    ("basket", ("solo_share",), "bought alone", "bought with others"),
 ]
 
 
-def primary_pattern(z: dict[str, float]) -> str:
-    """Plain name for the dominant demand pattern of a group (z-scores of its mean features)."""
-    if z["qty_per_line"] > 1.0 and z["adi"] > 0.3:
-        return "Bulk orders"
-    if z["adi"] > 0.7:
-        return "Intermittent sellers"
-    if z["seasonality"] > 0.8:
-        return "Seasonal"
-    if z["trend"] > 0.8 or z["recent_share"] > 0.9:
-        return "Growing"
-    if z["trend"] < -0.8 or z["recent_share"] < -0.9:
-        return "Fading"
-    if z["mean_weekly_units"] > 0.6:
-        return "Fast sellers"
-    return "Steady sellers"
+def names_for(patterns: np.ndarray, ranks: pd.DataFrame, labels: np.ndarray, k: int, groups: list[str]) -> list[str]:
+    """A cluster where most SKUs share a pattern word takes that word, plus the trait that sets it apart
+    from clusters with the same word. Any other cluster is named by the two traits that set it apart
+    from the average SKU. Traits come from the feature groups the clustering used."""
+    # Traits from the groups the clustering used come first; the others only when those run out.
+    traits = [t for t in TRAITS if t[0] in groups] + [t for t in TRAITS if t[0] not in groups]
+    n_own = max(1, sum(1 for t in TRAITS if t[0] in groups))
+    level = np.array([[ranks.loc[labels == c, list(cols)].median().mean() for _, cols, _, _ in traits] for c in range(k)])
 
+    def ranked_words(row: np.ndarray) -> list[str]:
+        own = [i for i in np.argsort(-np.abs(row[:n_own]))]
+        rest = [n_own + i for i in np.argsort(-np.abs(row[n_own:]))]
+        return [traits[i][2] if row[i] > 0 else traits[i][3] for i in own + rest]
 
-def names_for(profile: list[list[float]], keys: list[str]) -> list[str]:
-    """Unique plain names: the pattern, plus the strongest other trait where two groups share a pattern."""
-    zs = [dict(zip(keys, row)) for row in profile]
-    base = [primary_pattern(z) for z in zs]
-    ranked = []
-    for z, b in zip(zs, base):
-        options = []
-        for feats, hi, lo in QUALIFIERS:
-            v = float(np.mean([z[k] for k in feats]))
-            word = hi if v > 0 else lo
-            if word and word.lower() not in b.lower():
-                options.append((abs(v), word))
-        ranked.append([w for _, w in sorted(options, reverse=True)])
-    names = list(base)
-    # Add the strongest trait to every group whose pattern is shared, keeping names unique.
+    base: list[str | None] = []
+    for c in range(k):
+        words, counts = np.unique(patterns[labels == c], return_counts=True)
+        base.append(str(words[counts.argmax()]) if counts.max() >= MAJORITY * counts.sum() else None)
+    names = [""] * k
     used: set[str] = set()
-    for i in sorted(range(len(base)), key=lambda i: -len(ranked[i])):
-        if base.count(base[i]) == 1 and base[i] not in used:
-            names[i] = base[i]
-        else:
-            names[i] = next((f"{base[i]}, {w}" for w in ranked[i] if f"{base[i]}, {w}" not in used), f"{base[i]} ({i + 1})")
-        used.add(names[i])
+
+    def first_free(options) -> str:
+        name = next(o for o in options if o not in used)
+        used.add(name)
+        return name
+
+    for word in sorted({b for b in base if b}):
+        siblings = [c for c in range(k) if base[c] == word]
+        if len(siblings) == 1:
+            names[siblings[0]] = first_free([word])
+            continue
+        rel = level[siblings] - level[siblings].mean(axis=0)
+        for row, c in sorted(zip(rel, siblings), key=lambda rc: -np.abs(rc[0]).max()):
+            w = ranked_words(row)
+            names[c] = first_free([f"{word}, {a}" for a in w] + [f"{word}, {a}, {b}" for a in w for b in w if a != b])
+    for c in (c for c in range(k) if base[c] is None):
+        w = ranked_words(level[c] - 0.5)
+        names[c] = first_free([f"{a.capitalize()}, {b}" for a in w for b in w if a != b] + [f"{a.capitalize()}, {b}, {d}" for a in w for b in w for d in w if len({a, b, d}) == 3])
     return names
 
 
@@ -212,21 +248,22 @@ def purity(truth: np.ndarray, labels) -> float:
     return float(hits / len(truth))
 
 
-def policy_results(table4: dict, table5: dict, groupings: dict[str, np.ndarray]) -> dict:
-    """Choose a (mode, service) per group on year 4, evaluate on year 5."""
+def priced(train: dict, table: dict, groups: np.ndarray) -> tuple[dict, dict]:
+    """Choose a (mode, service) per group on the training year, then price that choice on `table`."""
+    best = ps.best_per_group(train, groups)
+    return best, ps.evaluate(table, [best[g] for g in groups])
+
+
+def policy_results(train: dict, test: dict, groupings: dict[str, np.ndarray]) -> dict:
+    """Policies chosen per group on the training year, priced once on the test year."""
     out = {}
-    n = len(next(iter(table5.values()))["total"])
+    n = len(next(iter(test.values()))["total"])
     for name, groups in groupings.items():
-        best = ps.best_per_group(table4, groups)
-        choice = [best[g] for g in groups]
-        res = ps.evaluate(table5, choice)
+        best, res = priced(train, test, groups)
         res["rules"] = len(best)
         res["choices"] = {str(g): {"mode": m, "service": s, "skus": int((groups == g).sum())} for g, (m, s) in best.items()}
         out[name] = res
-    uniform = ps.evaluate(table5, [("distributed", 0.95)] * n)
-    uniform["rules"] = 1
-    out["uniform"] = uniform
-    central = ps.evaluate(table5, [("central", 0.95)] * n)
+    central = ps.evaluate(test, [("central", 0.95)] * n)
     central["rules"] = 1
     out["all_central"] = central
     return out
@@ -263,9 +300,16 @@ def main(world_dir: str, out_dir: str) -> None:
     masks = list(range(1, 1 << len(GROUPS)))
     variants = Parallel(n_jobs=-1, verbose=0)(delayed(run_variant)(m, features, truth, full_z) for m in masks)
     full_mask = masks[-1]
+    # Seasonal means a yearly pattern of its own: sales are divided by the shop's weekly index (all
+    # SKUs together) before the test, so the shop-wide calendar alone does not count.
+    shop = weekly_train.sum(axis=0)
+    own = weekly_train / np.maximum(shop / shop.mean(), 1e-9)
+    seasonal = Parallel(n_jobs=-1)(delayed(seasonal_test)(own[i][on_sale[i]], SEED + i) for i in range(len(skus)))
+    patterns = np.array([sku_pattern(row, seasonal[i]) for i, (_, row) in enumerate(features.iterrows())])
+    ranks = features[sorted({col for _, cols, _, _ in TRAITS for col in cols})].rank(pct=True)
     for v in variants:
         for c in v["clusterings"].values():
-            c["names"] = names_for(c["profile"], keys)
+            c["names"] = names_for(patterns, ranks, np.array(c["labels"]), len(c["sizes"]), v["groups"])
             lab = np.array(c["labels"])
             c["metrics"]["purity"] = purity(truth, lab)
             c["stats"] = group_stats(features, lab, len(c["sizes"]))
@@ -277,40 +321,52 @@ def main(world_dir: str, out_dir: str) -> None:
     leaderboard.sort(key=lambda r: -r["ari_truth"])
     print(f"variants ready ({time.time() - t0:.0f}s)")
 
-    # Recommended configuration: Gaussian mixture on all features, k with the lowest BIC.
-    best_k = min(K_RANGE, key=lambda k: full["clusterings"][f"gmm-{k}"]["metrics"]["bic"])
-    default = {"mask": full_mask, "model": "gmm", "k": best_k, "embedding": "umap3d"}
-
-    # Policies: optimise per group on year 4, evaluate on year 5.
+    # Train, validate, test. Policies are chosen per group on the training set (year 3, order-up-to
+    # levels from year 2). Every setting (feature groups, method, k) is priced on the validation set
+    # (year 4) and the cheapest is chosen. Only that choice and the baselines are priced on the test
+    # set (year 5), once. The ground truth is never used to choose.
+    table3 = ps.cost_table(lines, skus, regions, 3)
     table4 = ps.cost_table(lines, skus, regions, 4)
     table5 = ps.cost_table(lines, skus, regions, 5)
+    _, abc_xyz_val = priced(table3, table4, base["abc_xyz"].to_numpy())
+    for v in variants:
+        for c in v["clusterings"].values():
+            best, res = priced(table3, table4, np.array(c["labels"]))
+            c["metrics"]["val_cost"] = res["total"]
+            c["metrics"]["val_vs_abc_xyz"] = res["total"] / abc_xyz_val["total"] - 1
+            c["policy"] = [{"mode": best[g][0], "service": best[g][1]} for g in range(len(c["sizes"]))]
+        (out / "variants" / f"m{v['mask']}.json").write_text(json.dumps(v, separators=(",", ":")))
+    for row in leaderboard:
+        v = next(x for x in variants if x["mask"] == row["mask"])
+        row["best_policy"], c = min(v["clusterings"].items(), key=lambda kv: kv[1]["metrics"]["val_cost"])
+        row["val_vs_abc_xyz"] = c["metrics"]["val_vs_abc_xyz"]
+    chosen_v, chosen_key = min(((v, key) for v in variants for key in v["clusterings"]),
+                               key=lambda vk: vk[0]["clusterings"][vk[1]]["metrics"]["val_cost"])
+    model_c, k_c = chosen_key.split("-")
+    best_k = int(k_c)
+    default = {"mask": chosen_v["mask"], "model": model_c, "k": best_k, "embedding": "umap3d"}
+    chosen = chosen_v["clusterings"][chosen_key]
+
     groupings = {
+        "uniform": np.zeros(len(skus), dtype=int),
         "abc": base["abc"].to_numpy(),
         "abc_xyz": base["abc_xyz"].to_numpy(),
         "sbc": base["sbc"].to_numpy(),
         "true_type": truth_names,
         "per_sku": np.arange(len(skus)),
+        f"cluster-{chosen_key}": np.array(chosen["labels"]),
     }
-    for model in MODELS:
-        for k in K_RANGE:
-            groupings[f"cluster-{model}-{k}"] = np.array(full["clusterings"][f"{model}-{k}"]["labels"])
-    policies = policy_results(table4, table5, groupings)
-    # Every clustering of every feature subset gets its out-of-sample policy cost, for the explorer.
-    abc_xyz_total = policies["abc_xyz"]["total"]
-    for v in variants:
-        for c in v["clusterings"].values():
-            labels = np.array(c["labels"])
-            best = ps.best_per_group(table4, labels)
-            res = ps.evaluate(table5, [best[g] for g in labels])
-            c["metrics"]["policy_cost"] = res["total"]
-            c["metrics"]["policy_vs_abc_xyz"] = res["total"] / abc_xyz_total - 1
-            c["policy"] = [{"mode": best[g][0], "service": best[g][1]} for g in range(len(c["sizes"]))]
-        (out / "variants" / f"m{v['mask']}.json").write_text(json.dumps(v, separators=(",", ":")))
-    for row in leaderboard:
-        v = next(x for x in variants if x["mask"] == row["mask"])
-        row["best_policy"], c = min(v["clusterings"].items(), key=lambda kv: kv[1]["metrics"]["policy_cost"])
-        row["policy_vs_abc_xyz"] = c["metrics"]["policy_vs_abc_xyz"]
-    print(f"policies ready ({time.time() - t0:.0f}s)")
+    policies = policy_results(table3, table5, groupings)
+    # Trade-off between stocking cost (validation set) and match with the demand types, every setting.
+    tradeoff = {
+        "settings": [[round(c["metrics"]["val_cost"]), round(c["metrics"]["purity"], 4), round(c["metrics"]["ari_truth"], 4), v["mask"], key]
+                     for v in variants for key, c in v["clusterings"].items()],
+        "chosen": [default["mask"], chosen_key],
+        "baselines": {name: {"val_cost": round(priced(table3, table4, groupings[name])[1]["total"]), "purity": purity(truth, groupings[name]),
+                             "ari": float(adjusted_rand_score(truth, groupings[name]))}
+                      for name in ("uniform", "abc", "abc_xyz", "sbc", "true_type")},
+    }
+    print(f"policies ready ({time.time() - t0:.0f}s): chose {default}")
 
     # Data section: sample rows, size, transformation examples.
     sample = (lines[lines["day"] <= TRAIN_END].sample(12, random_state=3)
@@ -375,9 +431,10 @@ def main(world_dir: str, out_dir: str) -> None:
         "policy_settings": {"lead_days": ps.LEAD, "review_days": ps.REVIEW, "order_cost": ps.ORDER_COST,
                             "slot_cost": ps.SLOT_COST, "slow_delivery_loss": ps.SLOW_DELIVERY_LOSS,
                             "service_levels": ps.SERVICE_LEVELS, "central_region": ps.CENTRAL,
-                            "train_year": 4, "test_year": 5},
+                            "train_year": 3, "validation_year": 4, "test_year": 5},
         "k_range": K_RANGE, "models": MODELS,
         "subset_leaderboard": leaderboard,
+        "tradeoff": tradeoff,
         "built_seconds": round(time.time() - t0, 1),
     }
     (out / "overview.json").write_text(json.dumps(overview, separators=(",", ":"), default=str))
@@ -389,15 +446,15 @@ def main(world_dir: str, out_dir: str) -> None:
             "price": float(s.price), "margin": float(s.margin), "launch_day": int(s.launch_day),
             "features": {f.key: round(float(features.loc[i, f.key]), 4) for f in FEATURES},
             "abc": base.loc[i, "abc"], "xyz": base.loc[i, "xyz"], "sbc": base.loc[i, "sbc"],
+            "pattern": str(patterns[i]),
             "weekly": weekly_all[i].astype(int).tolist(),
         })
     (out / "skus.json").write_text(json.dumps(sku_records, separators=(",", ":")))
 
-    gmm = full["clusterings"][f"gmm-{best_k}"]
-    pol = policies[f"cluster-gmm-{best_k}"]
+    pol = policies[f"cluster-{chosen_key}"]
     card = {
         "id": "sku-segmentation", "title": "Product clustering", "status": "ready",
-        "question": "Which products sell alike, so each group can get its own stocking rule?",
+        "question": "Which SKUs sell alike, so each cluster can get its own stocking policy?",
         "method": "Clustering",
         "headline": f"{best_k} clusters, stocking cost {abs(pol['total'] / policies['uniform']['total'] - 1):.0%} lower than one rule for all",
     }

@@ -20,34 +20,56 @@ export const TYPE_NAMES: Record<string, string> = {
 
 // The seven parts of a product's fingerprint.
 // The seven groups of features.
-export const FINGERPRINT: Record<string, { name: string; text: string }> = {
-  volume: { name: 'How much it sells', text: 'Units a week and revenue' },
-  variability: { name: 'How steady it is', text: 'How much sales jump around' },
-  intermittency: { name: 'How often it sells', text: 'Share of weeks with no sale' },
-  pattern: { name: 'Its shape over time', text: 'Seasonal peaks, growth or decline' },
-  physical: { name: 'Size and weight', text: 'Litres and kilos per unit' },
-  economic: { name: 'Price and margin', text: 'What it earns and what it costs to hold' },
-  basket: { name: 'How it is bought', text: 'Alone, with other products, or in bulk' },
+// Feature groups, named plainly.
+export const FINGERPRINT: Record<string, string> = {
+  volume: 'Sales volume',
+  variability: 'Variability',
+  intermittency: 'Intermittency',
+  pattern: 'Seasonality and trend',
+  physical: 'Size and weight',
+  economic: 'Price and margin',
+  basket: 'Basket',
 }
 
-// Plain names for the 16 numbers (formal names and formulas stay in the drawers).
+// Plain names for the 16 features, unit in brackets (formal names and formulas stay in the drawers).
 export const FEATURE_NAMES: Record<string, string> = {
-  mean_weekly_units: 'Units a week',
-  revenue: 'Revenue',
-  cv2: 'CV² (swings in sales)',
-  adi: 'ADI (gap between sales)',
-  zero_share: 'Weeks without a sale',
-  seasonality: 'Seasonal peak',
-  trend: 'Growth',
-  recent_share: 'Sales in the last year',
-  volume_l: 'Volume',
-  weight_kg: 'Weight',
-  margin: 'Margin',
-  price: 'Price',
-  holding_to_margin: 'Storage cost against margin',
-  solo_share: 'Bought alone',
-  basket_size: 'Basket size',
+  mean_weekly_units: 'Units per week',
+  revenue: 'Revenue ($k)',
+  cv2: 'CV²',
+  adi: 'ADI (weeks)',
+  zero_share: 'Weeks without a sale (%)',
+  seasonality: 'Seasonal strength',
+  trend: 'Growth per year (%)',
+  recent_share: 'Share sold in year 4 (%)',
+  volume_l: 'Unit volume (L)',
+  weight_kg: 'Unit weight (kg)',
+  margin: 'Margin (%)',
+  price: 'Price ($)',
+  holding_to_margin: 'Holding cost to margin',
+  solo_share: 'Single-item orders (%)',
+  basket_size: 'Basket size (SKUs)',
   qty_per_line: 'Units per order line',
+}
+
+// Each feature's value as a bare number in the unit its name gives, fixed decimals per feature.
+const num = (x: number, d: number) => (x < 0 ? '−' : '') + Math.abs(x).toLocaleString('en-GB', { minimumFractionDigits: d, maximumFractionDigits: d })
+export const FEATURE_FORMAT: Record<string, (v: number) => string> = {
+  mean_weekly_units: (v) => num(v, 1),
+  revenue: (v) => num(v / 1000, 0),
+  cv2: (v) => num(v, 2),
+  adi: (v) => num(v, 2),
+  zero_share: (v) => num(v * 100, 0),
+  seasonality: (v) => num(v, 2),
+  trend: (v) => num((Math.exp(v) - 1) * 100, 0),
+  recent_share: (v) => num(v * 100, 0),
+  volume_l: (v) => num(v, 1),
+  weight_kg: (v) => num(v, 1),
+  margin: (v) => num(v * 100, 0),
+  price: (v) => num(v, 2),
+  holding_to_margin: (v) => num(v, 2),
+  solo_share: (v) => num(v * 100, 0),
+  basket_size: (v) => num(v, 1),
+  qty_per_line: (v) => num(v, 1),
 }
 
 export const COLOUR_BY: Record<string, string> = {
@@ -63,10 +85,10 @@ export const POLICY_NAMES: Record<string, string> = {
   uniform: 'One policy for every SKU',
   all_central: 'Every SKU in the central FC',
   abc: 'ABC analysis (3 classes)',
-  abc_xyz: 'ABC/XYZ analysis (9 classes)',
+  abc_xyz: 'ABC/XYZ analysis',
   sbc: 'Demand classes by ADI and CV² (4)',
   true_type: 'Ground truth types (6, for reference)',
-  per_sku: 'One policy per SKU (300)',
+  per_sku: 'One policy per SKU',
 }
 
 // Words that must never appear on the visible surface outside a drawer (checked by the test).
@@ -77,7 +99,7 @@ export const BANNED_SPELLINGS = ['color', 'behavior', 'optimize', 'center', 'ana
 /** Visible surface strings, collected for the test. */
 export const SURFACE: string[] = [
   ...Object.values(TYPE_NAMES),
-  ...Object.values(FINGERPRINT).flatMap((f) => [f.name, f.text]),
+  ...Object.values(FINGERPRINT),
   ...Object.values(COLOUR_BY),
   ...Object.values(FEATURE_NAMES),
   ...Object.values(POLICY_NAMES),
