@@ -31,8 +31,8 @@ export interface Metrics {
   stability_sd: number
   ari_truth: number
   nmi_truth: number
-  policy_cost?: number
-  policy_vs_abc_xyz?: number
+  val_cost?: number
+  val_vs_abc_xyz?: number
   purity: number
 }
 
@@ -99,10 +99,16 @@ export interface Overview {
     service_levels: number[]
     central_region: number
     train_year: number
+    validation_year: number
     test_year: number
   }
   k_range: number[]
   models: string[]
+  tradeoff: {
+    settings: [number, number, number, number, string][] // validation cost, purity, ARI, mask, method-k
+    chosen: [number, string]
+    baselines: Record<string, { val_cost: number; purity: number; ari: number }>
+  }
   subset_leaderboard: {
     mask: number
     groups: string[]
@@ -112,7 +118,7 @@ export interface Overview {
     stability: number
     purity: number
     best_policy: string
-    policy_vs_abc_xyz: number
+    val_vs_abc_xyz: number
   }[]
 }
 

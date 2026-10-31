@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
 import LineChart from '../../components/LineChart'
-import { cat } from '../charts/colors'
+import { cat, diverging, inkOn } from '../charts/colors'
 import Formula from '../charts/Formula'
 import Heatmap from '../charts/Heatmap'
-import { COLOUR_BY, FEATURE_NAMES, FINGERPRINT, POLICY_NAMES, STOCKING, TYPE_NAMES, money, pct } from '../lexicon'
+import Tradeoff, { type Marked } from '../charts/Tradeoff'
+import { COLOUR_BY, FEATURE_FORMAT, FEATURE_NAMES, FINGERPRINT, POLICY_NAMES, STOCKING, TYPE_NAMES, money, pct } from '../lexicon'
 import { modelFile, type Overview, type SkuRecord, type Variant } from '../types'
 import { Bars, Drawer, Numbers, Screen, Sparkline } from '../ui'
 import '../showcase.css'
 import { COPY } from './copy'
 import Projector from './Projector'
 
-const SCREENS = ['top', 'question', 'data', 'fingerprint', 'map', 'groups', 'truth', 'worth', 'learned']
+const SCREENS = ['top', 'question', 'data', 'fingerprint', 'map', 'groups', 'truth', 'worth']
 type ColourBy = 'cluster' | 'true_type' | 'category'
 
 export default function SkuSegmentationPage() {
@@ -58,14 +59,14 @@ export default function SkuSegmentationPage() {
       <div className="sc-page">
         <a className="sc-back" href="#/models">All models</a>
 
-        <section id="top" className="sc-hero">
-          <div className="sc-label">Unsupervised learning · Clustering</div>
+        <section id="top" className="sc-hero cover">
           <h1>{COPY.title}</h1>
           <p className="sc-sub">{COPY.intro}</p>
           <Numbers items={[
-            { value: String(o.default.k), label: 'clusters of SKUs', note: 'k chosen in advance' },
-            { value: pct(def.metrics.purity), label: 'purity against the ground truth', note: `ABC/XYZ analysis: ${pct(o.baselines.vs_truth.abc_xyz.purity)}` },
-            { value: `−${pct(saving)}`, label: 'stocking cost on the test set', note: 'against one policy for every SKU' },
+            { value: String(o.world.counts.skus), label: 'SKUs' },
+            { value: String(o.world.categories.length), label: 'Categories' },
+            { value: String(o.world.counts.regions), label: 'Regions' },
+            { value: o.world.counts.customers.toLocaleString('en-GB'), label: 'Customers' },
           ]} />
         </section>
 
@@ -77,7 +78,7 @@ export default function SkuSegmentationPage() {
 
         <Screen id="truth" {...COPY.screens.truth}
           drawer={<Drawer>
-            <p>Purity and the adjusted Rand index (ARI) compare a clustering with the ground truth. Normalised mutual information (NMI) is a second, information-based check: 1 for a perfect match, 0 for none.</p>
+            <p>Purity is the share of SKUs sitting in a cluster dominated by their own true type. The adjusted Rand index (ARI) is the agreement over all pairs of SKUs, corrected for chance (1 is perfect, 0 is chance). Normalised mutual information (NMI) is a second, information-based check: 1 for a perfect match, 0 for none.</p>
             <div className="table-wrap" style={{ maxWidth: 640 }}>
               <table className="grid">
                 <thead><tr><th>Clustering</th><th className="num">Purity</th><th className="num">ARI</th><th className="num">NMI</th></tr></thead>
@@ -89,12 +90,20 @@ export default function SkuSegmentationPage() {
                 </tbody>
               </table>
             </div>
+            <h4>Purity of each grouping</h4>
+            <Bars format={(v) => pct(v)} max={1} rows={[
+              { label: 'ABC analysis', value: o.baselines.vs_truth.abc.purity, note: `${o.baselines.vs_truth.abc.groups} classes, ARI ${o.baselines.vs_truth.abc.ari.toFixed(2)}` },
+              { label: 'ABC/XYZ analysis', value: o.baselines.vs_truth.abc_xyz.purity, note: `${o.baselines.vs_truth.abc_xyz.groups} classes, ARI ${o.baselines.vs_truth.abc_xyz.ari.toFixed(2)}` },
+              { label: 'Demand classes by ADI and CV²', value: o.baselines.vs_truth.sbc.purity, note: `${o.baselines.vs_truth.sbc.groups} classes, ARI ${o.baselines.vs_truth.sbc.ari.toFixed(2)}` },
+              { label: 'Our clusters', value: def.metrics.purity, note: `k = ${o.default.k}, ${base.features.length} of 16 features, ARI ${def.metrics.ari_truth.toFixed(2)}`, ours: true },
+              { label: 'Our clusters, best feature set', value: bestFingerprint.purity, note: `selection bias: picked after the fact; without ${o.groups.filter((g) => !bestFingerprint.groups.includes(g.key)).map((g) => FINGERPRINT[g.key].toLowerCase()).join(' or ')}` },
+            ]} />
             <h4>Our clusters against the ground truth</h4>
             <Heatmap title="Groups against true types" mode="sequential" cell={42} rowWidth={240} colHeight={60}
               rows={def.names} cols={o.truth.types.map((t) => TYPE_NAMES[t])} format={(v) => String(v)}
               values={def.names.map((_, c) => o.truth.types.map((t) => skus.filter((s, i) => def.labels[i] === c && s.true_type === t).length))} />
             <h4>Choosing k</h4>
-            <p>The default is the Gaussian mixture model (GMM) with the lowest Bayesian information criterion, <Formula tex={String.raw`\mathrm{BIC} = -2\ln\hat L + p\ln n`} />. Silhouette score, bootstrap stability (8 refits on 80% subsamples) and ARI against the ground truth are shown for GMM and k-means.</p>
+            <p>Every setting (127 feature selections, two methods, k from 2 to 10) gets one stocking policy per cluster, chosen on the training set, and is priced on the validation set. The cheapest is used; the ground truth plays no part in the choice. For all 16 features, the charts show silhouette score, bootstrap stability (8 refits on 80% subsamples), ARI against the ground truth and the Bayesian information criterion, <Formula tex={String.raw`\mathrm{BIC} = -2\ln\hat L + p\ln n`} />.</p>
             <div className="sc-grid cols-2">
               {(['silhouette', 'stability', 'ari_truth', 'bic'] as const).map((m) => (
                 <div key={m}>
@@ -104,20 +113,18 @@ export default function SkuSegmentationPage() {
                 </div>
               ))}
             </div>
-            <p>The best feature set is picked out of 127 after the fact (selection bias), so its purity is optimistic. The default (all 16 features, k by BIC) was fixed in advance.</p>
+            <p>The best feature set is picked out of 127 after the fact (selection bias), so its purity is optimistic. Our clusters were chosen on the validation set by stocking cost, without the ground truth.</p>
           </Drawer>}>
-          <Bars format={(v) => pct(v)} max={1} rows={[
-            { label: 'ABC analysis', value: o.baselines.vs_truth.abc.purity, note: `${o.baselines.vs_truth.abc.groups} classes, ARI ${o.baselines.vs_truth.abc.ari.toFixed(2)}` },
-            { label: 'ABC/XYZ analysis', value: o.baselines.vs_truth.abc_xyz.purity, note: `${o.baselines.vs_truth.abc_xyz.groups} classes, ARI ${o.baselines.vs_truth.abc_xyz.ari.toFixed(2)}` },
-            { label: 'Demand classes by ADI and CV²', value: o.baselines.vs_truth.sbc.purity, note: `${o.baselines.vs_truth.sbc.groups} classes, ARI ${o.baselines.vs_truth.sbc.ari.toFixed(2)}` },
-            { label: 'Our clusters', value: def.metrics.purity, note: `k = ${o.default.k}, all 16 features, ARI ${def.metrics.ari_truth.toFixed(2)}`, ours: true },
-            { label: 'Our clusters, best feature set', value: bestFingerprint.purity, note: `selection bias: picked after the fact; without ${o.groups.filter((g) => !bestFingerprint.groups.includes(g.key)).map((g) => FINGERPRINT[g.key].name.toLowerCase()).join(' or ')}` },
-          ]} />
+          <Tradeoff title="Stocking cost against purity for every setting"
+            x={o.tradeoff.settings.map((r) => r[0] / 1e6)} y={o.tradeoff.settings.map((r) => r[1])}
+            xTicks={[1.88, 1.92, 1.96, 2.0, 2.04]} yTicks={[0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]}
+            formatX={(v) => v.toFixed(2)} formatY={(v) => String(Math.round(v * 100))}
+            xLabel="Stocking cost on the validation set ($M)" yLabel="Purity (%)" marked={tradeoffMarks(o)} />
         </Screen>
 
         <Screen id="worth" {...COPY.screens.worth}
           drawer={<Drawer>
-            <p>Each cluster gets one stocking policy: keep its SKUs in every regional FC or only in the central FC, at a service level of {o.policy_settings.service_levels.map((v) => pct(v, v > 0.99 ? 1 : 0)).join(', ')}. The cheapest policy per cluster on year {o.policy_settings.train_year} is then run on year {o.policy_settings.test_year} in a daily inventory simulation.</p>
+            <p>Each cluster gets one stocking policy: keep its SKUs in every regional FC or only in the central FC, at a service level of {o.policy_settings.service_levels.map((v) => pct(v, v > 0.99 ? 1 : 0)).join(', ')}. The cheapest policy per cluster on year {o.policy_settings.train_year} (training set) is chosen, the clustering itself is chosen by cost on year {o.policy_settings.validation_year} (validation set), and the result is run once on year {o.policy_settings.test_year} (test set) in a daily inventory simulation.</p>
             <p>Restocking: weekly review up to the order-up-to level <Formula tex={String.raw`S = \mu(L+R) + z\,\sigma\sqrt{L+R}`} /> (safety stock included), lead time {o.policy_settings.lead_days} days. Costs: holding cost (25% of unit cost a year plus $2 per litre), ${o.policy_settings.order_cost} per restocking order line, ${o.policy_settings.slot_cost} a year per SKU per FC, delivery by weight and distance, and the margin of lost sales. Central stocking gains from risk pooling but delivers more slowly: {pct(o.policy_settings.slow_delivery_loss.same_landmass)} of mainland demand and {pct(o.policy_settings.slow_delivery_loss.cross_water)} across water does not wait.</p>
             <div className="table-wrap">
               <table className="grid">
@@ -133,31 +140,21 @@ export default function SkuSegmentationPage() {
                 </tbody>
               </table>
             </div>
-            <p>Our clusters and ABC/XYZ analysis cost about the same here ({pct(Math.abs(ours.total / P.abc_xyz.total - 1), 1)} apart). The difference is that a cluster can be assigned to a new SKU from its first weeks of sales and its attributes.</p>
+            <p>Our clusters cost {pct(Math.abs(ours.total / P.abc_xyz.total - 1), 1)} {ours.total < P.abc_xyz.total ? 'less' : 'more'} than ABC/XYZ analysis. A cluster can also be assigned to a new SKU from its first weeks of sales and its attributes.</p>
           </Drawer>}>
           <Numbers items={[
-            { value: `−${pct(saving)}`, label: 'stocking cost on the test set', note: `${money(ours.total)} instead of ${money(P.uniform.total)}` },
-            { value: pct(ours.fill_rate, 1), label: 'fill rate', note: `One policy for every SKU: ${pct(P.uniform.fill_rate, 1)}` },
-            { value: String(o.default.k), label: 'stocking policies to manage', note: 'One per cluster' },
+            { value: `−${pct(saving)}`, label: 'Stocking cost' },
+            { value: pct(ours.fill_rate, 1), label: 'Fill rate' },
+            { value: String(o.default.k), label: 'Stocking policies' },
           ]} />
           <Bars format={money} rows={[
-            { label: POLICY_NAMES.uniform, value: P.uniform.total, note: '1 policy' },
-            { label: POLICY_NAMES.abc_xyz, value: P.abc_xyz.total, note: '9 policies' },
-            { label: 'Our clusters', value: ours.total, note: `${o.default.k} policies`, ours: true },
+            { label: POLICY_NAMES.uniform, value: P.uniform.total },
+            { label: POLICY_NAMES.abc_xyz, value: P.abc_xyz.total },
+            { label: 'Our clusters', value: ours.total, ours: true },
             { label: POLICY_NAMES.per_sku, value: P.per_sku.total, note: 'needs years of history per SKU; risks overfitting' },
           ]} />
         </Screen>
 
-        <Screen id="learned" label={COPY.screens.learned.label} headline={COPY.screens.learned.headline}
-          drawer={<Drawer title="Limits of this study">
-            <p>The shop is simulated on purpose, so the ground truth is known. The stocking decision has two options per SKU, policies are fixed for a whole year, and the test set is one year. Where to open or expand FCs is a separate model.</p>
-          </Drawer>}>
-          <div className="sc-grid cols-3">
-            {COPY.learned.map((t, i) => (
-              <div key={i}><div className="sc-label" style={{ marginBottom: 8 }}>{String(i + 1).padStart(2, '0')}</div><p style={{ margin: 0, fontSize: 17, lineHeight: 1.45 }}>{t}</p></div>
-            ))}
-          </div>
-        </Screen>
       </div>
     </div>
   )
@@ -206,23 +203,57 @@ function DataScreen({ o }: { o: Overview }) {
   return (
     <Screen id="data" {...COPY.screens.data}>
       <Numbers items={[
-        { value: c.order_lines.toLocaleString('en-GB'), label: 'order lines' },
-        { value: c.orders.toLocaleString('en-GB'), label: 'orders' },
-        { value: c.customers.toLocaleString('en-GB'), label: 'customers' },
-        { value: String(c.regions), label: 'regions' },
+        { value: c.order_lines.toLocaleString('en-GB'), label: 'Order lines' },
+        { value: c.orders.toLocaleString('en-GB'), label: 'Orders' },
       ]} />
       <div className="sc-years">
-        {[1, 2, 3, 4, 5].map((y) => <div key={y}>Year {y}<small>{y < 5 ? 'Training set' : 'Test set'}</small></div>)}
+        {[1, 2, 3, 4, 5].map((y) => <div key={y}>Year {y}<small>{y < 4 ? 'Training set' : y === 4 ? 'Validation set' : 'Test set'}</small></div>)}
       </div>
     </Screen>
   )
 }
 
+// Cells within one standard deviation of the average SKU stay white; beyond, colour deepens up to
+// three standard deviations, red above and blue below.
+const zStyle = (z: number) => {
+  if (Math.abs(z) < 1) return undefined
+  const t = Math.sign(z) * (0.4 + 0.6 * Math.min((Math.abs(z) - 1) / 2, 1))
+  return { background: diverging(t), color: inkOn(t) }
+}
+
+// The points marked on the trade-off chart: our clusters, the best match to the demand types, baselines.
+function tradeoffMarks(o: Overview): Marked[] {
+  const T = o.tradeoff
+  const ours = T.settings.find((r) => r[3] === T.chosen[0] && r[4] === T.chosen[1])!
+  const best = T.settings.reduce((a, b) => (b[1] > a[1] ? b : a))
+  const B = T.baselines
+  const base = (key: string, label: string, anchor: 'start' | 'end' = 'start'): Marked =>
+    ({ x: B[key].val_cost / 1e6, y: B[key].purity, label, kind: 'baseline', anchor })
+  return [
+    base('uniform', POLICY_NAMES.uniform, 'end'),
+    base('abc', 'ABC analysis', 'end'),
+    base('sbc', 'Demand classes by ADI and CV²', 'end'),
+    base('abc_xyz', 'ABC/XYZ analysis'),
+    base('true_type', 'The demand types themselves', 'end'),
+    { x: best[0] / 1e6, y: best[1], label: 'Best match to the demand types', kind: 'best', dy: 16 },
+    { x: ours[0] / 1e6, y: ours[1], label: 'Our clusters', kind: 'ours' },
+  ]
+}
+
 function FingerprintScreen({ o, skus }: { o: Overview; skus: SkuRecord[] }) {
-  const [pick, setPick] = useState(0)
-  const ex = o.examples[pick]
-  const sku = skus.find((s) => s.id === ex.sku_id)!
-  const rank = (key: string, v: number) => skus.filter((s) => s.features[key] < v).length / (skus.length - 1)
+  const examples = o.examples.map((e) => skus.find((s) => s.id === e.sku_id)!)
+  // The standardised value the model sees: log where marked, then a z-score over all 300 SKUs.
+  const z = useMemo(() => {
+    const out: Record<string, (v: number) => number> = {}
+    for (const f of o.features) {
+      const t = (v: number) => (f.log ? Math.log1p(Math.max(v, 0)) : v)
+      const xs = skus.map((s) => t(s.features[f.key]))
+      const mean = xs.reduce((a, b) => a + b, 0) / xs.length
+      const sd = Math.sqrt(xs.reduce((a, b) => a + (b - mean) ** 2, 0) / xs.length) || 1
+      out[f.key] = (v) => (t(v) - mean) / sd
+    }
+    return out
+  }, [o, skus])
   return (
     <Screen id="fingerprint" {...COPY.screens.fingerprint}
       drawer={<Drawer>
@@ -237,28 +268,34 @@ function FingerprintScreen({ o, skus }: { o: Overview; skus: SkuRecord[] }) {
         <Heatmap title="Correlation between the numbers" mode="diverging" max={1} cell={28} rowWidth={150} colHeight={110}
           rows={o.features.map((f) => f.label)} cols={o.features.map((f) => f.label)} values={o.correlation} format={(v) => v.toFixed(1)} />
       </Drawer>}>
-      <div className="sc-controls">
-        <div className="sc-seg" role="group" aria-label="Example SKU">
-          {o.examples.map((e, i) => <button key={e.sku_id} aria-pressed={pick === i} onClick={() => setPick(i)}>{TYPE_NAMES[e.true_type]}</button>)}
-        </div>
+      <div className="sc-fv-wrap">
+        <table className="sc-fv">
+          <thead>
+            <tr>
+              <th />
+              {o.examples.map((e, i) => (
+                <th key={e.sku_id}><span className="sc-card-title"><i className="sc-dot" style={{ background: cat(i) }} />{TYPE_NAMES[e.true_type]}</span><small>{examples[i].name}</small></th>
+              ))}
+            </tr>
+          </thead>
+          {o.groups.map((g) => (
+            <tbody key={g.key}>
+              <tr><th scope="rowgroup" colSpan={examples.length + 1} className="sc-fv-group">{FINGERPRINT[g.key]}</th></tr>
+              {g.features.map((f) => (
+                <tr key={f}>
+                  <th scope="row">{FEATURE_NAMES[f]}</th>
+                  {examples.map((sku) => {
+                    const v = sku.features[f]
+                    return <td key={sku.id} className="num" style={zStyle(z[f](v))}>{FEATURE_FORMAT[f](v)}</td>
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          ))}
+        </table>
       </div>
-      <div className="sc-grid cols-4">
-        {o.groups.map((g) => (
-          <div key={g.key}>
-            <div className="sc-card-title">{FINGERPRINT[g.key].name}</div>
-            <p className="sc-card-text">{FINGERPRINT[g.key].text}</p>
-            {g.features.map((f) => {
-              const r = rank(f, sku.features[f])
-              const label = FEATURE_NAMES[f]
-              return (
-                <div key={f} title={`${label}: higher than ${pct(r)} of SKUs`} style={{ marginTop: 8 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}><span>{label}</span><span className="num">{pct(r)}</span></div>
-                  <div className="sc-bar-track" style={{ height: 6 }}><span className="sc-bar-fill" style={{ width: `${r * 100}%`, background: '#4338ca' }} /></div>
-                </div>
-              )
-            })}
-          </div>
-        ))}
+      <div className="sc-fv-legend" aria-hidden="true">
+        <span>Below the average SKU</span><i /><span>Above</span>
       </div>
     </Screen>
   )
@@ -272,6 +309,20 @@ function MapScreen({ o, skus }: { o: Overview; skus: SkuRecord[] }) {
   const [k, setK] = useState(o.default.k)
   const [layout, setLayout] = useState<'umap3d' | 'pca3d'>('umap3d')
   const [colourBy, setColourBy] = useState<ColourBy>('cluster')
+  // Jump to the cheapest setting on the validation set, or to the best match with the ground truth.
+  const presets = useMemo(() => {
+    const S = o.tradeoff.settings
+    const top = (i: 1 | 2) => S.reduce((a, b) => (b[i] > a[i] ? b : a))
+    return [
+      { label: 'Lowest stocking cost', mask: o.tradeoff.chosen[0], key: o.tradeoff.chosen[1] },
+      { label: 'Highest purity', mask: top(1)[3], key: top(1)[4] },
+      { label: 'Highest ARI', mask: top(2)[3], key: top(2)[4] },
+    ]
+  }, [o])
+  const applyPreset = (p: { mask: number; key: string }) => {
+    const [mod, kk] = p.key.split('-')
+    setMask(p.mask); setModel(mod); setK(Number(kk)); setIsolate(null)
+  }
   const [variant, setVariant] = useState<Variant | null>(null)
   const [selected, setSelected] = useState<number | null>(null)
   const [isolate, setIsolate] = useState<string | null>(null)
@@ -323,6 +374,11 @@ function MapScreen({ o, skus }: { o: Overview; skus: SkuRecord[] }) {
         {c && <p>Current settings: silhouette {c.metrics.silhouette.toFixed(2)}, bootstrap stability {c.metrics.stability.toFixed(2)}, adjusted Rand index against the true types {c.metrics.ari_truth.toFixed(2)}. All 127 fingerprints x 2 methods x 9 group counts are computed in advance.</p>}
       </Drawer>}>
       <div className="sc-controls">
+        <div className="sc-control">Setting
+          <div className="sc-seg" role="group" aria-label="Setting">
+            {presets.map((p) => <button key={p.label} aria-pressed={mask === p.mask && `${model}-${k}` === p.key} onClick={() => applyPreset(p)}>{p.label}</button>)}
+          </div>
+        </div>
         <div className="sc-control">Colour by
           <div className="sc-seg" role="group" aria-label="Colour by">
             {(Object.keys(COLOUR_BY) as ColourBy[]).map((x) => <button key={x} aria-pressed={colourBy === x} onClick={() => { setColourBy(x); setIsolate(null) }}>{COLOUR_BY[x]}</button>)}
@@ -341,7 +397,7 @@ function MapScreen({ o, skus }: { o: Overview; skus: SkuRecord[] }) {
         <div className="sc-chips">
           {o.groups.map((g, i) => (
             <button key={g.key} className="sc-chip" aria-pressed={!!(mask >> i & 1)}
-              onClick={() => { const m = mask ^ (1 << i); if (m) { setMask(m); setIsolate(null) } }}>{FINGERPRINT[g.key].name}</button>
+              onClick={() => { const m = mask ^ (1 << i); if (m) { setMask(m); setIsolate(null) } }}>{FINGERPRINT[g.key]}</button>
           ))}
         </div>
       </div>
@@ -392,7 +448,10 @@ function MapScreen({ o, skus }: { o: Overview; skus: SkuRecord[] }) {
             </div>
           )}
           {c && (
-            <Numbers items={[{ value: pct(c.metrics.purity), label: 'purity', note: `ARI ${c.metrics.ari_truth.toFixed(2)}` }]} />
+            <div>
+              <Numbers items={[{ value: pct(c.metrics.purity), label: 'Purity', note: `ARI ${c.metrics.ari_truth.toFixed(2)}` }]} />
+              <p className="sc-caption" style={{ marginTop: 8 }}>{COPY.selectionWarning}</p>
+            </div>
           )}
         </aside>
       </div>
@@ -413,11 +472,13 @@ function GroupsScreen({ o, skus, variant }: { o: Overview; skus: SkuRecord[]; va
   return (
     <Screen id="groups" {...COPY.screens.groups}
       drawer={<Drawer>
-        <p>Names come from each cluster's centroid: the main sales pattern, plus its strongest other trait when two clusters share a pattern. Values in the cards are medians. Below, every centroid on all 16 features as z-scores (blue below the average SKU, red above).</p>
+        <p>Each SKU gets a pattern word from fixed cut-offs on its own features, checked in this order. Bulk orders at 5 or more units per order line, Growing at +30% a year or more, Fading at −20% a year or less, Intermittent at 15% or more weeks without a sale, Seasonal if its yearly pattern, after removing the shop-wide calendar, is stronger than in each of 19 random reshuffles of its own sales, otherwise Steady. A cluster takes a pattern word only when at least 60% of its SKUs share it, plus the trait that sets it apart where two clusters share a word. Any other cluster is named by the two traits that set it apart from the average SKU, taken from the features the clustering used. The ground truth is never used for names.</p>
+        <p>The stocking policy is the cheapest of 12 options (central FC only or every regional FC, each at six service levels), simulated day by day on the training set. Central stocking needs one shelf slot instead of eight and pools safety stock, but delivers further and loses some customers who will not wait. So small, cheap SKUs tend to go central and bulky or fast-selling ones regional.</p>
+        <p>Below, every centroid on all 16 features as z-scores (blue below the average SKU, red above).</p>
         <Heatmap title="Group profiles" mode="diverging" max={2} cell={30} rowWidth={250} colHeight={110}
           rows={c.names} cols={o.features.map((f) => f.label)} values={c.profile} format={(v) => v.toFixed(1)} />
       </Drawer>}>
-      <div className="sc-grid cols-4">
+      <div className="sc-grid fixed-3">
         {c.names.map((name, g) => {
           const s = c.stats[g]
           return (
@@ -426,10 +487,10 @@ function GroupsScreen({ o, skus, variant }: { o: Overview; skus: SkuRecord[]; va
               <p className="sc-card-text">{c.sizes[g]} SKUs</p>
               <Sparkline values={typical(g)} color={cat(g)} label={`Typical weekly sales in ${name}`} />
               <dl className="sc-facts">
-                <dt>Sells a week</dt><dd>{s.mean_weekly_units.toFixed(1)}</dd>
-                <dt>Weeks with a sale</dt><dd>{pct(s.sells_in_weeks)}</dd>
-                <dt>Price</dt><dd>${s.price.toFixed(0)}</dd>
-                <dt>Size</dt><dd>{s.volume_l.toFixed(1)} litres</dd>
+                <dt>Units per week</dt><dd>{s.mean_weekly_units.toFixed(1)}</dd>
+                <dt>Weeks with a sale (%)</dt><dd>{Math.round(s.sells_in_weeks * 100)}</dd>
+                <dt>Price ($)</dt><dd>{s.price.toFixed(2)}</dd>
+                <dt>Unit volume (L)</dt><dd>{s.volume_l.toFixed(1)}</dd>
               </dl>
               <div className="sc-rule">{STOCKING(c.policy[g].mode, c.policy[g].service)}</div>
             </div>

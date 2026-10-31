@@ -1,11 +1,11 @@
 import type { ReactNode } from 'react'
 
 export function Screen({ id, label, headline, caption, drawer, children }: {
-  id: string; label: string; headline: string; caption?: string; drawer?: ReactNode; children?: ReactNode
+  id: string; label?: string; headline: string; caption?: string; drawer?: ReactNode; children?: ReactNode
 }) {
   return (
     <section id={id} className="sc-screen" aria-labelledby={`${id}-h`}>
-      <div className="sc-label">{label}</div>
+      {label && <div className="sc-label">{label}</div>}
       <h2 id={`${id}-h`} className="sc-headline">{headline}</h2>
       {children}
       {caption && <p className="sc-caption">{caption}</p>}
@@ -42,7 +42,7 @@ export function Bars({ rows, format, max }: { rows: { label: string; value: numb
 export function Drawer({ children, title = 'How it works' }: { children: ReactNode; title?: string }) {
   return (
     <details className="sc-drawer">
-      <summary>{title}</summary>
+      <summary aria-label={title} title={title}><span className="sc-drawer-icon" aria-hidden="true" /></summary>
       <div className="sc-drawer-body">{children}</div>
     </details>
   )
