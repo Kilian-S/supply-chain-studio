@@ -4,16 +4,18 @@ Usage: uv run python -m scgame.ml.product_affinity <world dir> <output dir>
 
 Method
   1. Baskets of the training set (years 1 to 3). For every pair of SKUs: how many baskets contain both,
-     how many chance alone would give within baskets of the same region and size (lift = observed /
+     how many chance alone would give within baskets of the same region, size and quarter (lift = observed /
      expected), and how surprising the count is under independence (Poisson tail). The
      Benjamini-Hochberg procedure keeps the false discovery rate among accepted pairs at a chosen level.
   2. Accepted pairs with lift above 1 form a graph, weighted by log lift. Louvain communities group
      densely linked SKUs; SKUs without an accepted pair are bought alone.
   3. Business check, a split catalogue: the central site runs 2 to 5 FCs, each SKU is stored in
-     exactly one, each FC holds an equal share of the catalogue (5% slack). A basket whose SKUs sit in
+     exactly one, each FC holds an equal share of the SKUs and of the workload (order lines), 5% slack. A basket whose SKUs sit in
      different FCs ships as several parcels (a split order). Assignment rules, built on the training
-     set: at random, by category, by popularity (spread evenly), by community, and by the hidden
-     bundles (reference only).
+     set: at random, by category, by popularity (spread evenly), best sellers together, by community,
+     and by the hidden bundles (reference only).
+     The quarter in the chance baseline was added after the check against the hidden bundles showed
+     timing links; overview.json reports the same choice without it (quarter_note).
   4. The false discovery rate and the Louvain resolution are chosen by delivery cost of the
      community rule on the validation set (year 4). Year 5 (test set) is priced once. The hidden bundles are used only to
      check the communities, never to choose.
@@ -66,15 +68,17 @@ def baskets(lines: pd.DataFrame, sku_index: dict[int, int], first: int, last: in
     X.data[:] = 1
     Q = sparse.csr_matrix((sub["quantity"].to_numpy().astype(float), (codes, cols)), shape=X.shape)
     region = sub.groupby(codes)["region_id"].first().to_numpy()
-    return {"X": X, "Q": Q, "region": region}
+    quarter = (sub.groupby(codes)["day"].first().to_numpy() - 1) // 91
+    return {"X": X, "Q": Q, "region": region, "quarter": quarter}
 
 
-def pair_stats(X: sparse.csr_matrix, region: np.ndarray) -> dict[str, np.ndarray]:
+def pair_stats(X: sparse.csr_matrix, region: np.ndarray, quarter: np.ndarray | None = None) -> dict[str, np.ndarray]:
     """Co-purchase counts, lift and one-sided p-values for every pair.
 
-    Chance is computed within comparable baskets: same region and same basket size (1, 2, 3, 4, 5+).
-    Regions sell different SKUs and large baskets hold many, so a shop-wide baseline would link SKUs
-    that merely share a region or a basket size. Expected count = sum over strata of
+    Chance is computed within comparable baskets: same region, same basket size (1, 2, 3, 4, 5+) and
+    same quarter. Regions sell different SKUs, large baskets hold many, and growing or seasonal SKUs
+    sell in the same months, so a shop-wide baseline would link SKUs that merely share a region, a
+    basket size or a season. Expected count = sum over strata of
     count_s(a) count_s(b) / n_s; the p-value uses a Poisson tail with that mean (its variance is at
     least the hypergeometric one, so the test is slightly conservative)."""
     n = X.shape[0]
@@ -82,13 +86,14 @@ def pair_stats(X: sparse.csr_matrix, region: np.ndarray) -> dict[str, np.ndarray
     cnt = np.diag(co).copy()
     np.fill_diagonal(co, 0)
     size = np.minimum(np.asarray(X.sum(axis=1)).ravel(), 5)
+    quarter = np.zeros(n, dtype=int) if quarter is None else quarter
     expected = np.zeros_like(co)
-    for r in np.unique(region):
-        for k in range(2, 6):
-            rows = np.nonzero((region == r) & (size == k))[0]
-            if len(rows):
-                c = np.asarray(X[rows].sum(axis=0)).ravel().astype(float)
-                expected += np.outer(c, c) / len(rows)
+    stratum = pd.Series(list(zip(region, size, quarter)))
+    for _, rows in stratum.groupby(stratum).groups.items():
+        rows = np.asarray(rows)
+        if size[rows[0]] >= 2:
+            c = np.asarray(X[rows].sum(axis=0)).ravel().astype(float)
+            expected += np.outer(c, c) / len(rows)
     np.fill_diagonal(expected, 0)
     with np.errstate(divide="ignore", invalid="ignore"):
         lift = np.where(expected > 0, co / expected, 0.0)
@@ -132,66 +137,65 @@ def communities(accepted: np.ndarray, weight: np.ndarray, resolution: float) -> 
 # Split catalogue: assignment rules and delivery
 # =================================================================================================
 
-def capacity(n_sku: int, k: int) -> int:
-    return int(np.ceil(n_sku / k * (1 + SLACK)))
+def place(units: list[np.ndarray], load: np.ndarray, k: int, sequential: bool = False) -> np.ndarray:
+    """Put units (groups of SKUs) into k FCs, in the given order. Every FC is limited to an equal share
+    of the SKUs and of the workload (order lines), each with SLACK. Balanced placement takes the FC
+    left with the most room; sequential placement fills FC 1 first, then FC 2, and so on. A unit that
+    fits nowhere whole is placed SKU by SKU, heaviest first."""
+    n = len(load)
+    sku_cap, load_cap = np.ceil(n / k * (1 + SLACK)), load.sum() / k * (1 + SLACK)
+    fc = np.full(n, -1)
+    skus, work = np.zeros(k), np.zeros(k)
 
+    def room(f: int, u: np.ndarray) -> float:
+        return min((sku_cap - skus[f] - len(u)) / sku_cap, (load_cap - work[f] - load[u].sum()) / load_cap)
 
-def pack(units: list[np.ndarray], k: int, n_sku: int) -> np.ndarray:
-    """Place whole units, largest first, each in the FC with the most free room; SKUs are never split
-    from their unit unless a unit is larger than an FC."""
-    cap = capacity(n_sku, k)
-    fc = np.full(n_sku, -1)
-    room = np.full(k, cap)
-    for u in sorted(units, key=len, reverse=True):
-        f = int(np.argmax(room))
-        if len(u) <= room[f]:
-            fc[u] = f
-            room[f] -= len(u)
-        else:  # too large for any FC: spread it
-            for s_ in u:
-                g = int(np.argmax(room))
-                fc[s_] = g
-                room[g] -= 1
-    return fc
+    def put(f: int, u: np.ndarray) -> None:
+        fc[u] = f
+        skus[f] += len(u)
+        work[f] += load[u].sum()
 
-
-def snake(order: np.ndarray, k: int) -> np.ndarray:
-    """Deal SKUs in the given order to FCs 1..k, k..1, 1..k: spreads popular SKUs evenly."""
-    fc = np.empty(len(order), dtype=int)
-    pattern = np.concatenate([np.arange(k), np.arange(k)[::-1]])
-    fc[order] = pattern[np.arange(len(order)) % (2 * k)]
+    queue = list(units)
+    while queue:
+        u = queue.pop(0)
+        fits = [f for f in range(k) if room(f, u) >= 0]
+        if fits:
+            put(fits[0] if sequential else max(fits, key=lambda f: room(f, u)), u)
+        elif len(u) > 1:
+            queue = [np.array([s_]) for s_ in sorted(u, key=lambda s_: -load[s_])] + queue
+        else:  # a single SKU too heavy for any FC's remaining room: least overflow
+            put(max(range(k), key=lambda f: room(f, u)), u)
     return fc
 
 
 def assignments(train: dict, categories: np.ndarray, labels: np.ndarray, truth: np.ndarray) -> dict[str, dict[int, np.ndarray]]:
     """SKU-to-FC assignment per rule and number of FCs, from the training set only (truth only for
-    the reference rule). Communities and bundles are packed whole; the remaining SKUs fill the free
-    room most popular first."""
-    n_sku = train["X"].shape[1]
+    the reference rule). Workload is each SKU's number of order lines in the training set."""
+    load = np.asarray(train["X"].sum(axis=0)).ravel().astype(float)
+    n_sku = len(load)
     pop = popularity_order(train["X"])
+    singles = [np.array([s_]) for s_ in pop]
     rng = np.random.default_rng(SEED)
+    shuffled = [np.array([s_]) for s_ in rng.permutation(n_sku)]
 
-    def grouped(groups: np.ndarray) -> list[np.ndarray]:
-        return [np.nonzero(groups == g)[0] for g in np.unique(groups)]
+    def whole_then_singles(groups: np.ndarray, keep: np.ndarray | None = None) -> list[np.ndarray]:
+        big = [np.nonzero(groups == g)[0] for g in np.unique(groups) if (groups == g).sum() > 1 and (keep is None or keep[groups == g].all())]
+        big.sort(key=lambda u: -load[u].sum())
+        placed = np.zeros(n_sku, dtype=bool)
+        for u in big:
+            placed[u] = True
+        return big + [u for u in singles if not placed[u[0]]]
 
-    def with_singles(k: int, groups: list[np.ndarray]) -> np.ndarray:
-        big = [g for g in groups if len(g) > 1]
-        fc = pack(big, k, n_sku)
-        room = capacity(n_sku, k) - np.bincount(fc[fc >= 0], minlength=k)
-        for s_ in pop:
-            if fc[s_] < 0:
-                f = int(np.argmax(room))
-                fc[s_] = f
-                room[f] -= 1
-        return fc
-
-    out: dict[str, dict[int, np.ndarray]] = {r: {} for r in ("random", "category", "popularity", "communities", "hidden_bundles")}
+    cats = sorted((np.nonzero(categories == c)[0] for c in np.unique(categories)), key=lambda u: -load[u].sum())
+    bundled = np.where(truth > 0, truth, -np.arange(1, n_sku + 1))
+    out: dict[str, dict[int, np.ndarray]] = {r: {} for r in ("random", "category", "popularity", "best_sellers", "communities", "hidden_bundles")}
     for k in FCS:
-        out["random"][k] = snake(rng.permutation(n_sku), k)
-        out["category"][k] = pack(grouped(categories), k, n_sku)
-        out["popularity"][k] = snake(pop, k)
-        out["communities"][k] = with_singles(k, grouped(labels))
-        out["hidden_bundles"][k] = with_singles(k, [np.nonzero(truth == b)[0] for b in np.unique(truth[truth > 0])])
+        out["random"][k] = place(shuffled, load, k)
+        out["category"][k] = place(cats, load, k)
+        out["popularity"][k] = place(singles, load, k)
+        out["best_sellers"][k] = place(singles, load, k, sequential=True)
+        out["communities"][k] = place(whole_then_singles(labels), load, k)
+        out["hidden_bundles"][k] = place(whole_then_singles(bundled), load, k)
     return out
 
 
@@ -216,7 +220,9 @@ def deliver(b: dict, fc: np.ndarray, k: int, weight: np.ndarray, mult: np.ndarra
         cost += has * (PARCEL_FEE + PER_KG * (kg @ on)) * m
     multi = np.asarray(X.sum(axis=1)).ravel() > 1
     split = parcels > 1
-    return {"fcs": k, "orders": int(X.shape[0]), "multi": int(multi.sum()), "split": int(split.sum()),
+    lines_per_sku = np.asarray(X.sum(axis=0)).ravel()
+    load_share = [float(lines_per_sku[fc == f].sum() / lines_per_sku.sum()) for f in range(k)]
+    return {"fcs": k, "orders": int(X.shape[0]), "multi": int(multi.sum()), "split": int(split.sum()), "load_share": load_share,
             "parcels": int(parcels.sum()), "cost": float(cost.sum()),
             "split_share": float(split.sum() / X.shape[0]), "multi_split_share": float(split.sum() / max(multi.sum(), 1))}
 
@@ -264,7 +270,7 @@ def main(world_dir: str, out_dir: str) -> None:
     train = baskets(lines, sku_index, 1, TRAIN_END)
     val = baskets(lines, sku_index, *VAL)
     test = baskets(lines, sku_index, *TEST)
-    st = pair_stats(train["X"], train["region"])
+    st = pair_stats(train["X"], train["region"], train["quarter"])
     log_lift = np.log(np.maximum(st["lift"], 1e-12))
     print(f"pair statistics ready ({time.time() - t0:.0f}s)")
 
@@ -288,6 +294,17 @@ def main(world_dir: str, out_dir: str) -> None:
     accepted = bh_accept(st["p"], best["fdr"]) & (st["lift"] > 1)
     print(f"chose fdr {best['fdr']} resolution {best['resolution']}")
 
+    # Disclosure: the quarter was added to the chance baseline after the check against the hidden
+    # bundles exposed timing links. The same choice without it, for comparison.
+    st_nq = pair_stats(train["X"], train["region"])
+    nq = []
+    for q in FDR_LEVELS:
+        acc_nq = bh_accept(st_nq["p"], q) & (st_nq["lift"] > 1)
+        lab_nq = communities(acc_nq, np.log(np.maximum(st_nq["lift"], 1e-12)), 1.0)
+        v = price(assignments(train, categories, lab_nq, truth)["communities"], val, weight, mult, region_ids)
+        nq.append({"fdr": q, "val_cost": float(np.mean([x["cost"] for x in v])), "truth": pair_check(lab_nq, truth)})
+    without_quarter = min(nq, key=lambda g: g["val_cost"])
+
     # Baselines for the check against the hidden bundles.
     n_edges = best["edges"]
     iu = np.triu_indices(len(skus), 1)
@@ -295,7 +312,13 @@ def main(world_dir: str, out_dir: str) -> None:
     by_count = np.zeros_like(accepted)
     by_count[iu[0][top], iu[1][top]] = True
     by_count = by_count | by_count.T
-    count_labels = communities(by_count, st["count"], best["resolution"])
+    # The raw-count baseline gets the same treatment as ours: its resolution chosen on the validation set.
+    count_grid = []
+    for res in RESOLUTIONS:
+        cl = communities(by_count, st["count"], res)
+        v = price(assignments(train, categories, cl, truth)["communities"], val, weight, mult, region_ids)
+        count_grid.append((float(np.mean([x["cost"] for x in v])), res, cl))
+    _, count_res, count_labels = min(count_grid, key=lambda t: t[0])
     check = {"communities": pair_check(labels, truth), "count_communities": pair_check(count_labels, truth),
              "categories": pair_check(categories, truth)}
 
@@ -322,7 +345,9 @@ def main(world_dir: str, out_dir: str) -> None:
         "settings": {"fdr_levels": FDR_LEVELS, "resolutions": RESOLUTIONS, "fcs": FCS, "slack": SLACK,
                      "parcel_fee": PARCEL_FEE, "per_kg": PER_KG, "central_region": ps.CENTRAL},
         "grid": [{k: v for k, v in g.items() if k != "labels"} for g in grid],
-        "chosen": {"fdr": best["fdr"], "resolution": best["resolution"]},
+        "chosen": {"fdr": best["fdr"], "resolution": best["resolution"], "count_baseline_resolution": count_res},
+        "quarter_note": {"added_after_truth_check": True, "with_quarter": {"val_cost": best["val_cost"], "truth": best["truth"]},
+                         "without_quarter": without_quarter},
         "truth": {"bundles": int(len(bundle_units)), "skus_in_bundles": int((truth > 0).sum()), "check": check},
         "results": results,
         "assignments": {name: {str(k): v.tolist() for k, v in rule.items()} for name, rule in rules.items()},

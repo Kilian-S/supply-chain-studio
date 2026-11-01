@@ -122,13 +122,15 @@ questions fast, H flags risk, O decides, and the simulator checks the decision.
 - Agreed and built 1 November 2026 (`backend/src/scgame/ml/product_affinity.py`, outputs in
   `data/models/product-affinity/`; no page yet).
 - Pairs: co-purchase counts on the training set (years 1 to 3); chance computed within baskets of the
-  same region and basket size; lift = observed / expected; Poisson tail p-values; Benjamini-Hochberg
+  same region, basket size and quarter (without the quarter, growing and same-season SKUs looked linked); lift = observed / expected; Poisson tail p-values; Benjamini-Hochberg
   false discovery rate.
 - Groups: graph of accepted pairs weighted by log lift, Louvain communities; SKUs without an accepted
   pair are bought alone. Hidden bundles used only to check (precision, recall, ARI).
-- Business check: split catalogue. 2 to 5 FCs at the central site, each SKU in exactly one, equal
-  capacity; split orders and delivery cost by assignment rule (random, category, popularity,
-  communities, hidden bundles as reference). Settings chosen on the validation set (year 4), test
+- Business check: split catalogue. 2 to 5 FCs at the central site, each SKU in exactly one, each FC
+  limited to an equal share of SKUs and of workload (order lines), 5% slack; split orders and delivery
+  cost by assignment rule (random, category, popularity spread, best sellers together, communities,
+  hidden bundles as reference). The raw-count baseline's resolution is chosen on validation too. The
+  quarter was added after the bundle check exposed timing links; this is disclosed (quarter_note). Settings chosen on the validation set (year 4), test
   set (year 5) priced once.
 - Dropped: a limited-regional-slots check, because stocking whole communities added nothing over
   picking single SKUs there (coverage, not affinity, drove split orders).
