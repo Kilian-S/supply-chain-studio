@@ -5,6 +5,8 @@ export interface Series {
   label: string
   color: string
   values: (number | null)[]
+  dash?: string // stroke dash pattern
+  labelColor?: string // colour of the end label (endLabels), the line colour when left out
 }
 
 interface Props {
@@ -14,9 +16,15 @@ interface Props {
   height?: number
   format?: (v: number) => string
   xLabel?: string
+  hideTitle?: boolean
+  hideToggle?: boolean // no Chart/Data toggle
+  hideLegend?: boolean // no swatch legend
+  endLabels?: boolean // each line named at its right end, after a sample of its stroke; moved labels get a leader
+  endGroup?: number // lines whose last values lie within this distance share one stacked label (0: equal only)
+  yLabel?: string // axis titles: this beside the y axis and xLabel under the x axis
 }
 
-const PAD = { left: 52, right: 12, top: 10, bottom: 24 }
+const BASE_PAD = { left: 52, right: 12, top: 10, bottom: 24 }
 
 // Round tick step (1, 2, 2.5 or 5 x 10^k) giving about four intervals up to `v`.
 function niceStep(v: number) {
@@ -27,7 +35,17 @@ function niceStep(v: number) {
   return 10 * p
 }
 
-export default function LineChart({ title, x, series, height = 170, format = (v) => v.toFixed(0), xLabel = 'Day' }: Props) {
+const END_LABELS = 240 // right margin for end labels
+
+const ROW = 15 // height of one end-label row
+
+export default function LineChart({ title, x, series, height = 170, format = (v) => v.toFixed(0), xLabel = 'Day', hideTitle, hideToggle, hideLegend, endLabels, endGroup = 0, yLabel }: Props) {
+  const PAD = {
+    left: yLabel ? 70 : BASE_PAD.left,
+    right: endLabels ? END_LABELS : BASE_PAD.right,
+    top: BASE_PAD.top,
+    bottom: yLabel ? 44 : BASE_PAD.bottom,
+  }
   const box = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(390)
   const [hover, setHover] = useState<number | null>(null)
@@ -63,7 +81,7 @@ export default function LineChart({ title, x, series, height = 170, format = (v)
       return d
     })
     return { yMin, yMax, step, paths }
-  }, [series, x, width, height])
+  }, [series, x, width, height, PAD.left, PAD.right, PAD.top, PAD.bottom])
 
   const w = width - PAD.left - PAD.right
   const h = height - PAD.top - PAD.bottom
@@ -71,7 +89,31 @@ export default function LineChart({ title, x, series, height = 170, format = (v)
   const px = (i: number) => PAD.left + (i / n) * w
   const py = (v: number) => PAD.top + h - ((v - yMin) / (yMax - yMin || 1)) * h
   const yTicks = Array.from({ length: Math.round((yMax - yMin) / step) + 1 }, (_, i) => yMin + i * step)
-  const xTicks = x.length ? [0, 0.25, 0.5, 0.75, 1].map((f) => Math.round(f * (x.length - 1))) : []
+  const xTicks = x.length ? [...new Set([0, 0.25, 0.5, 0.75, 1].map((f) => Math.round(f * (x.length - 1))))] : []
+
+  // End labels: lines whose last values lie within endGroup share one stacked label. Each block sits
+  // level with its lines' end; blocks pushed apart to avoid overlap get a hairline leader.
+  const ends: { anchor: number; y: number; rows: Series[] }[] = []
+  if (endLabels) {
+    const last = (s: Series) => [...s.values].reverse().find((v) => v != null) as number | undefined
+    const withEnd = series.filter((s) => last(s) != null).sort((a, b) => (last(b) as number) - (last(a) as number))
+    const groups: Series[][] = []
+    for (const s of withEnd) {
+      const g = groups[groups.length - 1]
+      if (g && Math.abs((last(g[0]) as number) - (last(s) as number)) <= endGroup + 1e-9) g.push(s)
+      else groups.push([s])
+    }
+    for (const g of groups) {
+      const mean = g.reduce((a, s) => a + (last(s) as number), 0) / g.length
+      ends.push({ anchor: py(mean), y: py(mean), rows: g })
+    }
+    ends.sort((a, b) => a.anchor - b.anchor)
+    const half = (e: { rows: Series[] }) => (e.rows.length * ROW) / 2
+    for (let k = 1; k < ends.length; k++) ends[k].y = Math.max(ends[k].y, ends[k - 1].y + half(ends[k - 1]) + half(ends[k]) + 4)
+    const over = ends.length ? ends[ends.length - 1].y + half(ends[ends.length - 1]) - (PAD.top + h) : 0
+    if (over > 0) for (const e of ends) e.y -= over
+  }
+  const labelX = width - PAD.right + 22
 
   const onMove = (e: React.PointerEvent<SVGRectElement>) => {
     const rect = e.currentTarget.getBoundingClientRect()
@@ -81,13 +123,17 @@ export default function LineChart({ title, x, series, height = 170, format = (v)
 
   return (
     <div className="section">
-      <div className="panel-head" style={{ alignItems: 'center' }}>
-        <h3>{title}</h3>
-        <button className="btn small" onClick={() => setShowData((s) => !s)} aria-pressed={showData}>
-          {showData ? 'Chart' : 'Data'}
-        </button>
-      </div>
-      {series.length > 1 && (
+      {!(hideTitle && hideToggle) && (
+        <div className="panel-head" style={{ alignItems: 'center' }}>
+          {hideTitle ? <span /> : <h3>{title}</h3>}
+          {!hideToggle && (
+            <button className="btn small" onClick={() => setShowData((s) => !s)} aria-pressed={showData}>
+              {showData ? 'Chart' : 'Data'}
+            </button>
+          )}
+        </div>
+      )}
+      {series.length > 1 && !hideLegend && (
         <div className="chart-legend">
           {series.map((s) => (
             <span key={s.id}><i className="swatch" style={{ background: s.color }} />{s.label}</span>
@@ -121,12 +167,36 @@ export default function LineChart({ title, x, series, height = 170, format = (v)
                 </g>
               ))}
               {xTicks.map((i) => (
-                <text key={i} x={px(i)} y={height - 6} textAnchor="middle">{x[i]}</text>
+                <text key={i} x={px(i)} y={PAD.top + h + 18} textAnchor="middle">{x[i]}</text>
               ))}
             </g>
+            {yLabel && (
+              <>
+                <text className="axis-title" x={PAD.left + w / 2} y={height - 6} textAnchor="middle">{xLabel}</text>
+                <text className="axis-title" transform={`translate(14,${PAD.top + h / 2}) rotate(-90)`} textAnchor="middle">{yLabel}</text>
+              </>
+            )}
             {paths.map((d, k) => (
-              <path key={series[k].id} d={d} fill="none" stroke={series[k].color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+              <path key={series[k].id} d={d} fill="none" stroke={series[k].color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" strokeDasharray={series[k].dash} />
             ))}
+            {ends.map((e) => {
+              const top = e.y - (e.rows.length * ROW) / 2
+              const moved = Math.abs(e.y - e.anchor) > 2
+              return (
+                <g key={e.rows.map((r) => r.id).join()}>
+                  {moved && <polyline points={`${width - PAD.right + 3},${e.anchor} ${labelX - 6},${e.y}`} fill="none" stroke="#8a8699" strokeWidth={0.75} />}
+                  {e.rows.map((r, k) => {
+                    const cy = top + k * ROW + ROW / 2
+                    return (
+                      <g key={r.id}>
+                        <line x1={labelX} x2={labelX + 18} y1={cy} y2={cy} stroke={r.color} strokeWidth={2} strokeLinecap="round" strokeDasharray={r.dash} />
+                        <text x={labelX + 24} y={cy + 4} fontSize={12.5} fill={r.labelColor ?? r.color}>{r.label}</text>
+                      </g>
+                    )
+                  })}
+                </g>
+              )
+            })}
             {hover != null && (
               <g>
                 <line x1={px(hover)} x2={px(hover)} y1={PAD.top} y2={PAD.top + h} stroke="#1e1b2e" strokeDasharray="3 3" />

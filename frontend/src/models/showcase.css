@@ -19,6 +19,9 @@
 }
 .showcase * { border-radius: 0 !important; box-shadow: none !important; }
 .showcase .num, .showcase .figure { font-variant-numeric: tabular-nums; }
+/* SF Pro everywhere on the model pages, figures included (the shared rules in styles.css set axis
+ * ticks, table figures and tooltips in SF Mono); formulas keep the KaTeX fonts. */
+.showcase *:not(.katex, .katex *) { font-family: var(--sans) !important; font-variant-numeric: tabular-nums; }
 
 /* Page frame */
 .sc-page { max-width: 1120px; margin: 0 auto; padding: 0 32px 120px; }
@@ -124,8 +127,9 @@
 /* Tables inside the showcase */
 .showcase table.grid { border-collapse: collapse; width: 100%; font-size: 13px; }
 .showcase table.grid th { text-align: left; font-weight: 600; color: var(--sc-muted); border-bottom: 1px solid var(--sc-line-strong); padding: 7px 8px; }
-.showcase table.grid td { border-bottom: 1px solid var(--sc-line); padding: 6px 8px; }
+.showcase table.grid td { border-bottom: 1px solid var(--sc-line); padding: 4px 8px; }
 .showcase .table-wrap { border: 1px solid var(--sc-line); overflow-x: auto; }
+.showcase table.grid tbody tr.sc-group-start:not(:first-child) td { border-top: 1.5px solid var(--sc-line-strong); }
 .showcase .btn { border-width: 1px; min-height: 30px; font-weight: 500; }
 
 /* Feature vectors: one column per SKU; only values far from the average SKU are coloured */
@@ -181,6 +185,52 @@
 .proj-tools button { width: 34px; height: 34px; border: 1px solid var(--sc-line-strong); background: #fff; cursor: pointer; font-size: 16px; color: var(--sc-ink); }
 .proj-fallback { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 30px; text-align: center; color: var(--sc-muted); }
 .sc-sparkline { width: 100%; height: 46px; display: block; }
+
+/* Pair matrix (canvas) and hover read-outs */
+.sc-matrix-wrap { display: flex; flex-direction: column; gap: 8px; }
+.sc-matrix { position: relative; max-width: 100%; }
+.sc-matrix canvas { display: block; max-width: 100%; height: auto; cursor: crosshair; }
+.sc-matrix-hover { position: absolute; border: 1.5px solid var(--sc-ink); pointer-events: none; box-sizing: border-box; }
+.sc-matrix-frame {
+  width: 600px; max-width: 100%; aspect-ratio: 1; border: 1px solid var(--sc-line); display: flex; align-items: center; justify-content: center;
+  color: var(--sc-muted); font-size: 13.5px;
+}
+.sc-readout { min-height: 22px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 18px; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+.sc-readout .k { color: var(--sc-muted); }
+
+/* Scatter with a canvas layer */
+.chart .sc-scatter-layer { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }
+.sc-scatter-layer circle { pointer-events: all; }
+.sc-note { font-size: 13px; font-weight: 600; paint-order: stroke; stroke: #fff; stroke-width: 4px; stroke-linejoin: round; }
+.showcase .tooltip { font-variant-numeric: tabular-nums; }
+.showcase .tooltip .muted { color: var(--sc-muted); }
+
+/* Orders by size */
+.sc-sizes { max-width: 760px; }
+.sc-sizes .sc-sizes-x { font-size: 12px; }
+
+/* Network side panel: fixed to the map height, the list scrolls inside */
+.sc-map-side.fixed { height: 600px; max-height: none; overflow: hidden; }
+.sc-legend.scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; border-top: 1px solid var(--sc-line); }
+.sc-map-lines { display: flex; flex-direction: column; }
+.sc-map-lines p { margin: 0; padding: 6px 4px; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+.sc-map-lines p + p { border-top: 1px solid var(--sc-line); }
+.sc-sku { display: flex; flex-direction: column; gap: 12px; min-height: 0; flex: 1 1 auto; }
+.sc-sku-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.sc-sku-head h3 { margin: 0; font-size: 20px; }
+.sc-sku .sc-facts { margin-top: 0; }
+.sc-list-head { display: flex; justify-content: space-between; font-size: 13px; font-weight: 600; padding: 0 4px; }
+.sc-legend button small { font-size: 12px; margin-left: 4px; }
+
+/* SKUs placed into FCs */
+.sc-fc { display: flex; flex-direction: column; gap: 12px; }
+.sc-fc-cols { display: flex; flex-wrap: wrap; gap: 28px; align-items: flex-start; }
+.sc-fc-col { display: flex; flex-direction: column; gap: 8px; }
+.sc-fc-col h3 { margin: 0; font-size: 14px; font-weight: 600; }
+.sc-fc-col svg { display: block; overflow: visible; }
+.sc-fc-col rect[role='button'] { cursor: pointer; outline: none; }
+.sc-fc-outline { fill: none; stroke: var(--sc-ink); stroke-width: 1.5; pointer-events: none; }
+.sc-fc-active { fill: none; stroke: var(--sc-ink); stroke-width: 1.5; stroke-dasharray: 3 2; pointer-events: none; }
 
 @media (max-width: 900px) {
   .sc-map { grid-template-columns: 1fr; }

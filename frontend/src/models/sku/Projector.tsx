@@ -15,20 +15,23 @@ export interface ProjectorProps {
   selected: number | null
   neighbours: number[]
   isolate: string | null
-  autoRotate: boolean
+  autoRotate: boolean // the page starts it off when the viewer asks for reduced motion (see motion.ts)
   onSelect: (i: number | null) => void
+  sizes?: number[] // point size factor per point, 1 when left out
+  edges?: { a: number; b: number; strength: number }[] // faint lines between points, strength 0 to 1
 }
 
 const VERT = `
 attribute vec3 aColor;
 attribute float aAlpha;
+attribute float aSize;
 uniform float uSize;
 uniform float uScale;
 varying vec3 vColor;
 varying float vAlpha;
 void main() {
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
-  gl_PointSize = max(2.0, uSize * uScale / -mv.z);
+  gl_PointSize = max(2.0, uSize * aSize * uScale / -mv.z);
   gl_Position = projectionMatrix * mv;
   vColor = aColor;
   vAlpha = aAlpha;
@@ -67,6 +70,7 @@ function normalise(coords: number[][]): Float32Array {
 }
 
 const rgb = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+const GROUND = rgb('#fbfbfd'), INK = rgb('#1e1b2e')
 const HOME = new THREE.Vector3(2.1, 1.3, 2.5)
 
 export default function Projector(props: ProjectorProps) {
@@ -78,7 +82,7 @@ export default function Projector(props: ProjectorProps) {
   live.current = props
   const world = useRef<{
     renderer: THREE.WebGLRenderer; camera: THREE.PerspectiveCamera; controls: OrbitControls
-    points: THREE.Points; marker: THREE.Points; links: THREE.LineSegments
+    points: THREE.Points; marker: THREE.Points; links: THREE.LineSegments; web: THREE.LineSegments
     pos: Float32Array; centroids: { key: string; p: THREE.Vector3; el: HTMLDivElement }[]
   } | null>(null)
 
@@ -115,6 +119,7 @@ export default function Projector(props: ProjectorProps) {
     markerGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(3), 3))
     markerGeo.setAttribute('aColor', new THREE.BufferAttribute(new Float32Array([0.12, 0.11, 0.18]), 3))
     markerGeo.setAttribute('aAlpha', new THREE.BufferAttribute(new Float32Array([1]), 1))
+    markerGeo.setAttribute('aSize', new THREE.BufferAttribute(new Float32Array([1]), 1))
     const markerMat = mat.clone()
     markerMat.uniforms.uSize.value = 0.11
     markerMat.depthTest = false
@@ -124,6 +129,10 @@ export default function Projector(props: ProjectorProps) {
     scene.add(marker)
     const links = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: '#1e1b2e', transparent: true, opacity: 0.6 }))
     scene.add(links)
+    // Optional lines between points, opaque and mixed into the ground colour so they stay faint.
+    const web = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ vertexColors: true, depthWrite: false }))
+    web.renderOrder = -1
+    scene.add(web)
     const grid = new THREE.GridHelper(4, 8, '#dcdbe6', '#ececf3')
     grid.position.y = -1.3
     scene.add(grid)
@@ -178,7 +187,7 @@ export default function Projector(props: ProjectorProps) {
     renderer.domElement.addEventListener('pointerup', onUp)
     renderer.domElement.addEventListener('pointerleave', onLeave)
 
-    world.current = { renderer, camera, controls, points, marker, links, pos: new Float32Array(0), centroids: [] }
+    world.current = { renderer, camera, controls, points, marker, links, web, pos: new Float32Array(0), centroids: [] }
 
     let raf = 0
     const loop = () => {
@@ -223,8 +232,8 @@ export default function Projector(props: ProjectorProps) {
     }
   }, [])
 
-  // Points, colours, isolation and group labels.
-  const { coords, colors, keys, labelFor, isolate } = props
+  // Points, colours, sizes, lines, isolation and group labels (only for keys that have a label).
+  const { coords, colors, keys, labelFor, isolate, sizes, edges } = props
   useEffect(() => {
     const w = world.current
     if (!w) return
@@ -232,15 +241,32 @@ export default function Projector(props: ProjectorProps) {
     w.pos = pos
     const col = new Float32Array(coords.length * 3)
     const alpha = new Float32Array(coords.length)
+    const size = new Float32Array(coords.length).fill(1)
     colors.forEach((hex, i) => {
       col.set(rgb(hex), i * 3)
       alpha[i] = isolate == null || keys[i] === isolate ? 0.95 : 0.12
+      if (sizes) size[i] = sizes[i]
     })
     const g = w.points.geometry
     g.setAttribute('position', new THREE.BufferAttribute(pos, 3))
     g.setAttribute('aColor', new THREE.BufferAttribute(col, 3))
     g.setAttribute('aAlpha', new THREE.BufferAttribute(alpha, 1))
+    g.setAttribute('aSize', new THREE.BufferAttribute(size, 1))
     g.computeBoundingSphere()
+    const list = edges ?? []
+    const seg = new Float32Array(list.length * 6)
+    const segCol = new Float32Array(list.length * 6)
+    list.forEach((e, k) => {
+      const inside = isolate == null || (keys[e.a] === isolate && keys[e.b] === isolate)
+      const t = (0.1 + 0.45 * e.strength) * (inside ? 1 : 0.25)
+      const c = GROUND.map((v, d) => v + (INK[d] - v) * t)
+      seg.set(pos.subarray(e.a * 3, e.a * 3 + 3), k * 6)
+      seg.set(pos.subarray(e.b * 3, e.b * 3 + 3), k * 6 + 3)
+      segCol.set(c, k * 6)
+      segCol.set(c, k * 6 + 3)
+    })
+    w.web.geometry.setAttribute('position', new THREE.BufferAttribute(seg, 3))
+    w.web.geometry.setAttribute('color', new THREE.BufferAttribute(segCol, 3))
     const layer = labelLayer.current!
     layer.replaceChildren()
     const sums = new Map<string, { s: THREE.Vector3; n: number }>()
@@ -250,14 +276,14 @@ export default function Projector(props: ProjectorProps) {
       e.n += 1
       sums.set(k, e)
     })
-    w.centroids = [...sums.entries()].map(([key, { s, n }]) => {
+    w.centroids = [...sums.entries()].filter(([key]) => key in labelFor).map(([key, { s, n }]) => {
       const div = document.createElement('div')
       div.className = 'proj-label'
-      div.textContent = labelFor[key] ?? key
+      div.textContent = labelFor[key]
       layer.appendChild(div)
       return { key, p: s.divideScalar(n), el: div }
     })
-  }, [coords, colors, keys, labelFor, isolate])
+  }, [coords, colors, keys, labelFor, isolate, sizes, edges])
 
   // Selection marker and lines to the nearest neighbours.
   const { selected, neighbours } = props

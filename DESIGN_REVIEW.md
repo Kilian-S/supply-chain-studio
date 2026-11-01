@@ -201,3 +201,19 @@ entries that led to it.
 Checked by an independent review against this log before saving; its corrections (titles may keep a
 question in the opening, his wording is kept but factually corrected, removed detail moves to drawers,
 context goes in captions rather than labels) are included.
+
+## Bought together: built by an agent loop (2026-11-01)
+
+- **Process.** A storyline writer, three critics (rules, truth, AI-slop checklist from web research,
+  `design/SLOP_CHECKLIST.md`), a builder and a visual reviewer, with the orchestrator deciding Gates 1
+  and 2 on Kilian's instruction to work autonomously. Specs and every review are in
+  `design/bought-together/`.
+- **What the critics caught.** Truth: a confounder in the chance baseline (region, basket size, then
+  quarter), a capacity loophole (best sellers piled into one FC), an unfair baseline setting, and two
+  choices not made purely on the validation set, now disclosed on the page. Rules: editorial titles,
+  context in labels, "bought alone" for SKUs that are not. Slop: forced contrasts, typed-in round
+  numbers, colour as the only cue, an unreadable line chart.
+- **Kilian's decisions.** Gate 0 (his most recent choice wins over the checklist), vocabulary
+  (community and lift approved, "accepted pair" rejected for "linked pair"), Category as the
+  comparison, keep the count matrix, keep the quarter and disclose it, workload capacity.
+- **Ready for Kilian's screen-by-screen review.**
