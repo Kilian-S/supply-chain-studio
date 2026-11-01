@@ -6,7 +6,8 @@ import Heatmap from '../charts/Heatmap'
 import Tradeoff, { type Marked } from '../charts/Tradeoff'
 import { COLOUR_BY, FEATURE_FORMAT, FEATURE_NAMES, FINGERPRINT, POLICY_NAMES, STOCKING, TYPE_NAMES, money, pct } from '../lexicon'
 import { modelFile, type Overview, type SkuRecord, type Variant } from '../types'
-import { Bars, Drawer, Numbers, Screen, Sparkline } from '../ui'
+import { prefersReducedMotion } from '../motion'
+import { Bars, Drawer, Numbers, Screen, Sparkline, Years } from '../ui'
 import '../showcase.css'
 import { COPY } from './copy'
 import Projector from './Projector'
@@ -206,9 +207,7 @@ function DataScreen({ o }: { o: Overview }) {
         { value: c.order_lines.toLocaleString('en-GB'), label: 'Order lines' },
         { value: c.orders.toLocaleString('en-GB'), label: 'Orders' },
       ]} />
-      <div className="sc-years">
-        {[1, 2, 3, 4, 5].map((y) => <div key={y}>Year {y}<small>{y < 4 ? 'Training set' : y === 4 ? 'Validation set' : 'Test set'}</small></div>)}
-      </div>
+      <Years />
     </Screen>
   )
 }
@@ -326,7 +325,7 @@ function MapScreen({ o, skus }: { o: Overview; skus: SkuRecord[] }) {
   const [variant, setVariant] = useState<Variant | null>(null)
   const [selected, setSelected] = useState<number | null>(null)
   const [isolate, setIsolate] = useState<string | null>(null)
-  const [rotate, setRotate] = useState(true)
+  const [rotate, setRotate] = useState(() => !prefersReducedMotion())
 
   useEffect(() => {
     let live = true

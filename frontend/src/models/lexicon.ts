@@ -91,6 +91,10 @@ export const POLICY_NAMES: Record<string, string> = {
   per_sku: 'One policy per SKU',
 }
 
+// The five years of the simulated shop and the set each belongs to (shared year strip).
+export const yearLabel = (y: number) => `Year ${y}`
+export const YEAR_SETS = ['Training set', 'Training set', 'Training set', 'Validation set', 'Test set']
+
 // Words that must never appear on the visible surface outside a drawer (checked by the test).
 // Reading-list terms: allowed in drawers and GLOSSARY.md, not on the surface.
 export const BANNED_ON_SURFACE = ['gmm', 'gaussian mixture', 'soft assignment', 'expectation', 'umap', 'nmi', 'mutual information', 'silhouette', 'bic', 'bootstrap', 'syntetos', 'boylan']
@@ -103,4 +107,6 @@ export const SURFACE: string[] = [
   ...Object.values(COLOUR_BY),
   ...Object.values(FEATURE_NAMES),
   ...Object.values(POLICY_NAMES),
+  ...YEAR_SETS,
+  ...[1, 2, 3, 4, 5].map(yearLabel),
 ]

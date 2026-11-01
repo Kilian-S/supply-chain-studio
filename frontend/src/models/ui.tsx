@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { YEAR_SETS, yearLabel } from './lexicon'
 
 export function Screen({ id, label, headline, caption, drawer, children }: {
   id: string; label?: string; headline: string; caption?: string; drawer?: ReactNode; children?: ReactNode
@@ -57,5 +58,14 @@ export function Sparkline({ values, color = '#4338ca', label }: { values: number
       <path d={`M0,${H} L${pts.join(' L')} L${W},${H} Z`} fill={color} opacity={0.12} />
       <path d={`M${pts.join(' L')}`} fill="none" stroke={color} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
     </svg>
+  )
+}
+
+/** The five years of the shop and the set each belongs to. */
+export function Years() {
+  return (
+    <div className="sc-years">
+      {YEAR_SETS.map((set, i) => <div key={i}>{yearLabel(i + 1)}<small>{set}</small></div>)}
+    </div>
   )
 }

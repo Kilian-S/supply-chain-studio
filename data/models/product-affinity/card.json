@@ -1,0 +1,7 @@
+{
+  "id": "product-affinity",
+  "title": "Bought together",
+  "status": "ready",
+  "method": "Clustering",
+  "question": "Which SKUs are bought together, so they should be stored in the same FC?"
+}
