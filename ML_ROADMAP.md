@@ -119,11 +119,19 @@ questions fast, H flags risk, O decides, and the simulator checks the decision.
 - Open points: which features; whether to show UMAP or t-SNE projections.
 
 ### K. Product affinity (unsupervised, graph)
-- Co-purchase counts from baskets; lift and association rules as the baseline; item embeddings
-  (item2vec style) or graph community detection (Louvain) for groups.
-- Output: affinity communities that feed the listing and network decisions; the split-order rate
-  if communities are kept together vs scattered.
-- Open points: embeddings or graph communities as the main method.
+- Agreed and built 1 November 2026 (`backend/src/scgame/ml/product_affinity.py`, outputs in
+  `data/models/product-affinity/`; no page yet).
+- Pairs: co-purchase counts on the training set (years 1 to 3); chance computed within baskets of the
+  same region and basket size; lift = observed / expected; Poisson tail p-values; Benjamini-Hochberg
+  false discovery rate.
+- Groups: graph of accepted pairs weighted by log lift, Louvain communities; SKUs without an accepted
+  pair are bought alone. Hidden bundles used only to check (precision, recall, ARI).
+- Business check: split catalogue. 2 to 5 FCs at the central site, each SKU in exactly one, equal
+  capacity; split orders and delivery cost by assignment rule (random, category, popularity,
+  communities, hidden bundles as reference). Settings chosen on the validation set (year 4), test
+  set (year 5) priced once.
+- Dropped: a limited-regional-slots check, because stocking whole communities added nothing over
+  picking single SKUs there (coverage, not affinity, drove split orders).
 
 ### B. Long-range demand forecasting (supervised regression, neural network)
 - Hierarchy: total, region, category, SKU. Horizon: up to 5 years at monthly or weekly level, plus
