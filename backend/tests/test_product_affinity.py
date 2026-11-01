@@ -64,3 +64,9 @@ def test_communities_recover_the_hidden_bundles():
     assert check["communities"]["recall"] > 0.95
     assert check["communities"]["ari"] > 0.8
     assert check["communities"]["ari"] > check["categories"]["ari"]
+
+
+@pytest.mark.skipif(not (OUT / "graph.json").exists(), reason="model outputs not built")
+def test_community_names_are_unique():
+    names = [c["name"] for c in json.loads((OUT / "graph.json").read_text())["communities"]]
+    assert len(names) == len(set(names)) > 0
