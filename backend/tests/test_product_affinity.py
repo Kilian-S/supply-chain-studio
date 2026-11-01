@@ -34,12 +34,20 @@ def test_lift_is_one_for_independent_skus_and_high_for_a_bundle():
     assert st["count"][0, 2] == 0
 
 
-def test_pack_keeps_units_whole_within_capacity():
-    units = [np.arange(0, 6), np.arange(6, 10), np.arange(10, 13)]
-    fc = pa.pack(units, 2, 20)
-    for u in units:
+def test_place_keeps_units_whole_within_both_capacities():
+    load = np.ones(20)
+    units = [np.arange(0, 6), np.arange(6, 10), np.arange(10, 13)] + [np.array([i]) for i in range(13, 20)]
+    fc = pa.place(units, load, 2)
+    for u in units[:3]:
         assert len(set(fc[u])) == 1
-    assert np.bincount(fc[fc >= 0]).max() <= pa.capacity(20, 2)
+    assert np.bincount(fc).max() <= np.ceil(20 / 2 * (1 + pa.SLACK))
+
+
+def test_sequential_fill_respects_the_workload_limit():
+    load = np.array([50.0, 30, 10, 5, 3, 2])  # one heavy SKU cannot share an FC with the next one
+    fc = pa.place([np.array([i]) for i in range(6)], load, 2, sequential=True)
+    for f in range(2):
+        assert load[fc == f].sum() <= load.sum() / 2 * (1 + pa.SLACK) or (fc == f).sum() == 1
 
 
 def test_a_basket_spread_over_two_fcs_counts_as_split():
