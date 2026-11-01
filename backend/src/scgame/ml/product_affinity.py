@@ -20,10 +20,11 @@ Method
      community rule on the validation set (year 4). Year 5 (test set) is priced once. The hidden bundles are used only to
      check the communities, never to choose.
 
-Outputs (no card.json until the page exists)
+Outputs
   overview.json  facts, settings grid, chosen setting, check against the hidden bundles, test results
   graph.json     SKUs with their community, accepted pairs with count, lift and p-value
-  matrix.json    co-purchase counts and lift for every pair (training set), for the heatmaps
+  matrix.json    co-purchase counts, expected counts and lift for every pair (training set)
+  card.json      title and question for the models home page
 """
 
 from __future__ import annotations
@@ -137,18 +138,20 @@ def communities(accepted: np.ndarray, weight: np.ndarray, resolution: float) -> 
 # Split catalogue: assignment rules and delivery
 # =================================================================================================
 
-def place(units: list[np.ndarray], load: np.ndarray, k: int, sequential: bool = False) -> np.ndarray:
+def place(units: list[np.ndarray], load: np.ndarray, k: int, sequential: bool = False, workload: bool = True) -> np.ndarray:
     """Put units (groups of SKUs) into k FCs, in the given order. Every FC is limited to an equal share
     of the SKUs and of the workload (order lines), each with SLACK. Balanced placement takes the FC
     left with the most room; sequential placement fills FC 1 first, then FC 2, and so on. A unit that
     fits nowhere whole is placed SKU by SKU, heaviest first."""
     n = len(load)
-    sku_cap, load_cap = np.ceil(n / k * (1 + SLACK)), load.sum() / k * (1 + SLACK)
+    sku_cap = np.ceil(n / k * (1 + SLACK))
+    load_cap = load.sum() / k * (1 + SLACK) if workload else np.inf
     fc = np.full(n, -1)
     skus, work = np.zeros(k), np.zeros(k)
 
     def room(f: int, u: np.ndarray) -> float:
-        return min((sku_cap - skus[f] - len(u)) / sku_cap, (load_cap - work[f] - load[u].sum()) / load_cap)
+        sku_room = (sku_cap - skus[f] - len(u)) / sku_cap
+        return sku_room if np.isinf(load_cap) else min(sku_room, (load_cap - work[f] - load[u].sum()) / load_cap)
 
     def put(f: int, u: np.ndarray) -> None:
         fc[u] = f
@@ -168,7 +171,7 @@ def place(units: list[np.ndarray], load: np.ndarray, k: int, sequential: bool = 
     return fc
 
 
-def assignments(train: dict, categories: np.ndarray, labels: np.ndarray, truth: np.ndarray) -> dict[str, dict[int, np.ndarray]]:
+def assignments(train: dict, categories: np.ndarray, labels: np.ndarray, truth: np.ndarray, workload: bool = True) -> dict[str, dict[int, np.ndarray]]:
     """SKU-to-FC assignment per rule and number of FCs, from the training set only (truth only for
     the reference rule). Workload is each SKU's number of order lines in the training set."""
     load = np.asarray(train["X"].sum(axis=0)).ravel().astype(float)
@@ -190,12 +193,12 @@ def assignments(train: dict, categories: np.ndarray, labels: np.ndarray, truth: 
     bundled = np.where(truth > 0, truth, -np.arange(1, n_sku + 1))
     out: dict[str, dict[int, np.ndarray]] = {r: {} for r in ("random", "category", "popularity", "best_sellers", "communities", "hidden_bundles")}
     for k in FCS:
-        out["random"][k] = place(shuffled, load, k)
-        out["category"][k] = place(cats, load, k)
-        out["popularity"][k] = place(singles, load, k)
-        out["best_sellers"][k] = place(singles, load, k, sequential=True)
-        out["communities"][k] = place(whole_then_singles(labels), load, k)
-        out["hidden_bundles"][k] = place(whole_then_singles(bundled), load, k)
+        out["random"][k] = place(shuffled, load, k, workload=workload)
+        out["category"][k] = place(cats, load, k, workload=workload)
+        out["popularity"][k] = place(singles, load, k, workload=workload)
+        out["best_sellers"][k] = place(singles, load, k, sequential=True, workload=workload)
+        out["communities"][k] = place(whole_then_singles(labels), load, k, workload=workload)
+        out["hidden_bundles"][k] = place(whole_then_singles(bundled), load, k, workload=workload)
     return out
 
 
@@ -242,7 +245,8 @@ def pair_check(labels: np.ndarray, truth: np.ndarray) -> dict[str, float]:
     true = (truth[iu[0]] == truth[iu[1]]) & (truth[iu[0]] > 0)
     tp = int((together & true).sum())
     unique_truth = np.where(truth > 0, truth, -np.arange(1, len(truth) + 1))  # unbundled SKUs alone
-    return {"precision": tp / max(int(together.sum()), 1), "recall": tp / max(int(true.sum()), 1),
+    exact = sum(1 for b in np.unique(truth[truth > 0]) if set(np.nonzero(labels == labels[truth == b][0])[0]) == set(np.nonzero(truth == b)[0]))
+    return {"precision": tp / max(int(together.sum()), 1), "recall": tp / max(int(true.sum()), 1), "bundles_exact": int(exact),
             "pairs_together": int(together.sum()), "pairs_true": int(true.sum()),
             "ari": float(adjusted_rand_score(unique_truth, labels))}
 
@@ -322,14 +326,22 @@ def main(world_dir: str, out_dir: str) -> None:
     check = {"communities": pair_check(labels, truth), "count_communities": pair_check(count_labels, truth),
              "categories": pair_check(categories, truth)}
 
-    # Test set, priced once for every assignment rule.
+    # Disclosure: the workload limit and the best-sellers-together rule were added after a review run
+    # had compared the rules on the test set. The validation-set results without the limit, for comparison.
+    uncapped = assignments(train, categories, labels, truth, workload=False)
+    workload_note = {"added_after_test_comparison": True,
+                     "validation_without_workload_limit": {name: price(rule, val, weight, mult, region_ids) for name, rule in uncapped.items()}}
+
+    # Test set, priced for every assignment rule.
     bundle_units = [np.nonzero(truth == b)[0] for b in np.unique(truth[truth > 0])]
     rules = assignments(train, categories, labels, truth)
     results = {name: price(rule, test, weight, mult, region_ids) for name, rule in rules.items()}
+    results_validation = {name: price(rule, val, weight, mult, region_ids) for name, rule in rules.items()}
     print(f"test set priced ({time.time() - t0:.0f}s)")
 
     X = train["X"]
     basket_sizes = np.asarray(X.sum(axis=1)).ravel()
+    all_sizes = lines.groupby("order_id")["sku_id"].nunique().to_numpy()
     top200_count = np.argsort(-st["count"][iu])[:200]
     top200_lift = np.argsort(-np.where(st["count"][iu] >= 5, st["lift"][iu], 0))[:200]
     same_bundle = (truth[iu[0]] == truth[iu[1]]) & (truth[iu[0]] > 0)
@@ -341,31 +353,57 @@ def main(world_dir: str, out_dir: str) -> None:
                   "pairs_possible": int(len(iu[0])),
                   "top200_count_true_share": float(same_bundle[top200_count].mean()),
                   "top200_lift_true_share": float(same_bundle[top200_lift].mean()),
-                  "basket_size_counts": np.bincount(basket_sizes).tolist()},
+                  "basket_size_counts": np.bincount(basket_sizes).tolist(),
+                  "orders_by_year": [int(lines[(lines["day"] > 365 * y) & (lines["day"] <= 365 * (y + 1))]["order_id"].nunique()) for y in range(5)],
+                  "skus_per_order_all": float(all_sizes.mean()),
+                  "basket_size_counts_all": np.bincount(all_sizes).tolist()},
         "settings": {"fdr_levels": FDR_LEVELS, "resolutions": RESOLUTIONS, "fcs": FCS, "slack": SLACK,
                      "parcel_fee": PARCEL_FEE, "per_kg": PER_KG, "central_region": ps.CENTRAL},
         "grid": [{k: v for k, v in g.items() if k != "labels"} for g in grid],
         "chosen": {"fdr": best["fdr"], "resolution": best["resolution"], "count_baseline_resolution": count_res},
+        "workload_note": workload_note,
         "quarter_note": {"added_after_truth_check": True, "with_quarter": {"val_cost": best["val_cost"], "truth": best["truth"]},
                          "without_quarter": without_quarter},
         "truth": {"bundles": int(len(bundle_units)), "skus_in_bundles": int((truth > 0).sum()), "check": check},
         "results": results,
+        "results_validation": results_validation,
+        "resolution_invariant": all(g["labels"] == next(x for x in grid if x["fdr"] == g["fdr"])["labels"] for g in grid),
         "assignments": {name: {str(k): v.tolist() for k, v in rule.items()} for name, rule in rules.items()},
         "built_seconds": round(time.time() - t0, 1),
     }
     (out / "overview.json").write_text(json.dumps(overview, separators=(",", ":")))
 
     a, b = np.nonzero(np.triu(accepted, 1))
+    # A fixed 3D layout for the network: linked pairs pull together (weight = log lift).
+    g = nx.Graph()
+    g.add_nodes_from(range(len(skus)))
+    g.add_weighted_edges_from(zip(a.tolist(), b.tolist(), log_lift[a, b].tolist()))
+    pos = nx.spring_layout(g, dim=3, weight="weight", seed=SEED, iterations=200)
+    xyz = np.array([pos[i] for i in range(len(skus))])
+    xyz = (xyz - xyz.mean(axis=0)) / np.abs(xyz - xyz.mean(axis=0)).max()
+    names = skus["name"].to_numpy()
+    community_names = {}
+    for c in np.unique(labels):
+        members = np.nonzero(labels == c)[0]
+        if len(members) > 1:
+            top2 = members[np.argsort(-st["sku_count"][members], kind="stable")[:2]]
+            community_names[int(c)] = f"{names[top2[0]]} and {names[top2[1]]}"
     graph = {
         "nodes": [{"id": int(s.sku_id), "name": s.name, "category": s.category, "baskets": int(st["sku_count"][i]),
-                   "community": int(labels[i]), "alone": bool((labels == labels[i]).sum() == 1), "bundle": int(truth[i])}
+                   "community": int(labels[i]), "alone": bool((labels == labels[i]).sum() == 1), "bundle": int(truth[i]),
+                   "xyz": np.round(xyz[i], 4).tolist()}
                   for i, s in enumerate(skus.itertuples())],
+        "communities": [{"id": c, "name": n, "size": int((labels == c).sum())} for c, n in community_names.items()],
         "edges": [{"a": int(i), "b": int(j), "count": int(st["count"][i, j]), "lift": round(float(st["lift"][i, j]), 2),
                    "p": float(st["p"][i, j])} for i, j in zip(a, b)],
     }
     (out / "graph.json").write_text(json.dumps(graph, separators=(",", ":")))
-    matrix = {"count": st["count"].astype(int).tolist(), "lift": np.round(st["lift"], 2).tolist()}
+    sig = np.vectorize(lambda v: float(f"{v:.3g}"))
+    matrix = {"count": st["count"].astype(int).tolist(), "lift": sig(st["lift"]).tolist(), "expected": sig(st["expected"]).tolist()}
     (out / "matrix.json").write_text(json.dumps(matrix, separators=(",", ":")))
+    card = {"id": "product-affinity", "title": "Bought together", "status": "ready", "method": "Clustering",
+            "question": "Which SKUs are bought together, so they should be stored in the same FC?"}
+    (out / "card.json").write_text(json.dumps(card, indent=2))
     print(f"done in {time.time() - t0:.0f}s")
 
 
