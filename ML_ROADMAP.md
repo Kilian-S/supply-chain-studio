@@ -136,12 +136,19 @@ questions fast, H flags risk, O decides, and the simulator checks the decision.
   picking single SKUs there (coverage, not affinity, drove split orders).
 
 ### B. Long-range demand forecasting (supervised regression, neural network)
-- Hierarchy: total, region, category, SKU. Horizon: up to 5 years at monthly or weekly level, plus
-  daily for operations.
-- Models: seasonal naive and ETS baselines, LightGBM global model, and a neural net (N-BEATS or a
-  temporal convolutional network); quantile outputs (P10, P50, P90); hierarchical reconciliation.
-- Evaluation: rolling-origin backtests; WAPE, bias, pinball loss; comparison with the true process.
-- Open points: granularity of the strategic forecast; how far to go with reconciliation.
+- Agreed 2 November 2026; full proposal and model design in `design/demand-forecast/PROPOSAL.md`.
+- World extended to ten years for this model (years 1 to 5 unchanged; years 6 to 10 in separate
+  `*_future.parquet` files, with about 7 launches a year matched by delisting the slowest sellers, and
+  a growth ceiling).
+- Monthly units. Five years ahead at Total, Region, Category, Region × category; two years at SKU and
+  Region × SKU.
+- Methods are seasonal naive, ETS, LightGBM and a scikit-learn multilayer perceptron (the last two
+  global over 2,744 series), with mean forecasts, uncertainty from a joint error bootstrap (P10, P50, P90),
+  bottom-up or MinT reconciliation.
+- Fit on years 1 to 3, settings chosen on years 4 and 5, test on years 6 to 10 after a refit on years 1
+  to 5. Ground truth from 200 replications, check only.
+- The business check is a one-off regional capacity build for years 7 to 10, costs from the game's ratio,
+  full range of ratios shown.
 
 ### C. New-region demand (supervised regression, cold start)
 - Training data: existing regions' demand against region features (population, income, distance
