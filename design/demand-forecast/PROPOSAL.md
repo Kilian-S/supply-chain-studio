@@ -31,7 +31,7 @@ will each region and category sell over five years, and how sure are we?" (Kilia
 |---|---|
 | Years 1 to 5 | Byte for byte unchanged, so the clustering and Bought together pages and their results stand |
 | Years 6 to 10 | Generated after the existing run with a separate random stream, same customers, regions, prices and bundles |
-| Files | `orders_future.parquet`, `order_lines_future.parquet` and `skus_future.parquet` (new SKUs only) in `data/world_v1/`, so models that read `order_lines.parquet` see nothing new |
+| Files | `orders_future.parquet`, `order_lines_future.parquet`, `skus_future.parquet` (every SKU of years 1 to 10 with its life cycle), `bulk_buyers.parquet`, `bulk_buyers_future.parquet`, `world_future.json` and `truth_replications.npz` in `data/world_v1/`, so models that read `order_lines.parquet` see nothing new |
 | Same rules as years 1 to 5 | Retail season, SKU seasonality, regional taste, basket sizes, bulk orders, no market growth, no prices or promotions |
 | New SKUs | About 7 launches a year (the average of years 1 to 5, 37 launches in 5 years), drawn with the original type mix and parameter ranges, ids from 301 |
 | Ends of life | At the start of each of years 6 to 10, the SKUs with the lowest expected sales are delisted, as many as launch that year, so the catalogue stays near 300 (Kilian's choice, 2 November 2026). Fading SKUs that end in years 1 to 5 keep their end days |
