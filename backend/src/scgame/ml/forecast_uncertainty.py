@@ -4,7 +4,8 @@ quantiles and the scores.
 Past errors are one-year-ahead errors at rolling origins inside the fitting window, as log((y + 1) /
 (forecast + 1)) per series and month. Each block (one origin, all series, twelve months) splits into a
 level error (the block's mean per series) and month noise (the rest, stored by calendar month so a
-January draws January noise). Level errors are centred per series over the origins, so the paths add
+January draws January noise). Level errors and each calendar month's noise are centred per series over
+the origins, so the paths add
 spread around the mean forecast and no drift of their own. A sample path draws one block per forecast
 year for all series together; level errors add up over the years, month noise does not. A width factor
 k, chosen on the validation set (one for the upper levels, one for the SKU levels), scales both.
@@ -36,6 +37,7 @@ def error_blocks(actual: np.ndarray, forecast: np.ndarray, origins: list[int]) -
         months = (T + np.arange(12)) % 12  # calendar month of months T+1..T+12 (month m is calendar (m - 1) % 12)
         cal[:, j, months] = noise[:, j]
     lvl = lvl - lvl.mean(axis=1, keepdims=True)
+    cal = cal - cal.mean(axis=1, keepdims=True)  # each calendar month's noise centred over the origins too
     return ErrorBlocks(level=lvl.T.copy(), noise=np.transpose(cal, (1, 0, 2)).copy())
 
 

@@ -107,12 +107,14 @@ def test_paths_carry_level_errors_over_the_years():
 
 
 def test_error_blocks_are_centred_and_noise_follows_the_calendar():
-    actual = np.ones((1, 2, 12)) * 9
+    actual = np.ones((1, 3, 12)) * 9
     actual[0, 0, 0] = 19  # a high first month at origin 13 (month 14, a February)
-    forecast = np.ones((1, 2, 12)) * 9
+    actual[0, 2, 0] = 19  # and at origin 25
+    forecast = np.ones((1, 3, 12)) * 9
     forecast[0, 1] = 4  # the second origin's year runs 1.0 above in log terms
-    b = fu.error_blocks(actual, forecast, origins=[13, 24])
+    b = fu.error_blocks(actual, forecast, origins=[13, 24, 25])
     assert np.allclose(b.level.sum(axis=0), 0)  # centred over origins
+    assert np.allclose(b.noise.sum(axis=0), 0)  # each calendar month centred over origins
     assert b.noise[0, 0].argmax() == 1  # stored as February
     draws = np.zeros((1, 1), dtype=int)
     p = fu.sample_paths(np.full((1, 12), 9.0), b, draws, k=1.0, origin=36)  # month 37 is a January
