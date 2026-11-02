@@ -29,7 +29,11 @@ from scgame.ml.demand_series import LEVELS, UPPER
 VAL_FIT, TEST_FIT = 36, 60
 VAL_YEARS, TEST_YEARS, SKU_YEARS = 2, 5, 2
 N_PATHS = 1000
-WIDTHS = (0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0)
+# Width factors, one for the upper levels and one for the SKU levels (one factor for all levels left the
+# upper bands 2 to 3 times too narrow on validation, while wider SKU paths exploded).
+WIDTHS_UPPER = (0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0)
+WIDTHS_LOWER = (0.25, 0.35, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0)
+UPPER_RECS = ("Bottom-up", "MinT")
 METHODS = ["Seasonal naive", "ETS", "LightGBM", "Neural network"]
 GAME_CAPACITY_SHARE = 50_000 / (365 / 12) / 5 / 1_450  # yearly cost of a unit of monthly capacity, share of unit price
 RHO = np.round(np.geomspace(0.1, 10, 41), 4)  # capacity cost per unit of monthly capacity per year / lost margin per unit
@@ -145,34 +149,41 @@ class Probabilistic:
         origins = list(range(12, T - 12 + 1))
         past = f.past_year(origins)
         actual = np.stack([ser.y[:, o:o + 12] for o in origins], axis=1)
-        self.blocks = fu.error_blocks(actual, past)
+        self.blocks = fu.error_blocks(actual, past, origins)
         up = ser.upper_idx
         e_units = (actual[up] - past[up]).transpose(1, 2, 0).reshape(-1, len(up))
         bottom = np.searchsorted(up, ser.rc_idx)
         self.P = {"Bottom-up": fu.bottom_up_matrix(ser.S_upper, bottom), "MinT": fu.mint_matrix(ser.S_upper, fu.shrunk_covariance(e_units))}
         self.draws = fu.draw_origins(len(origins), years, N_PATHS, np.random.default_rng(seed))
 
-    def paths(self, k: float, upper_rec: str, lower_rec: str) -> dict[str, np.ndarray]:
+    def upper_paths(self, k: float, rec: str) -> np.ndarray:
+        up = self.ser.upper_idx
+        return fu.reconcile(self.P[rec], fu.sample_paths(self.mean[up], _sub(self.blocks, up), self.draws, k, self.T))
+
+    def lower_paths(self, k: float, upper: np.ndarray) -> dict[str, np.ndarray]:
+        """Region × SKU paths scaled to the reconciled Region × category paths (middle-out), and SKU paths as
+        their sums, so every level adds up."""
         ser = self.ser
-        up = ser.upper_idx
-        H = 12 * self.years
-        upper = fu.reconcile(self.P[upper_rec], fu.sample_paths(self.mean[up], _sub(self.blocks, up), self.draws, k))
         Hs = 12 * min(self.years, SKU_YEARS)
-        pairs = fu.sample_paths(self.mean[ser.pair_idx, :Hs], _sub(self.blocks, ser.pair_idx), self.draws[:, :Hs // 12], k)
-        if lower_rec == "Middle-out":
-            rc = upper[:, np.searchsorted(up, ser.rc_idx), :Hs]
-            pairs = fu.middle_out(pairs, ser.pair_parent, rc, len(ser.rc_idx))
-        skus = fu.sum_to(pairs, ser.pair_sku, len(ser.sku_idx))
-        return {"upper": upper[:, :, :H], "pairs": pairs, "skus": skus}
+        pairs = fu.sample_paths(self.mean[ser.pair_idx, :Hs], _sub(self.blocks, ser.pair_idx), self.draws[:, :Hs // 12], k, self.T)
+        rc = upper[:, np.searchsorted(ser.upper_idx, ser.rc_idx), :Hs]
+        pairs = fu.middle_out(pairs, ser.pair_parent, rc, len(ser.rc_idx))
+        return {"pairs": pairs, "skus": fu.sum_to(pairs, ser.pair_sku, len(ser.sku_idx))}
+
+    def paths(self, k_upper: float, k_lower: float, rec: str) -> dict[str, np.ndarray]:
+        upper = self.upper_paths(k_upper, rec)
+        return {"upper": upper, **self.lower_paths(k_lower, upper)}
 
     def quantile_table(self, paths: dict) -> dict[str, np.ndarray]:
-        """(3, series, months) per level."""
-        ser = self.ser
-        up_lev = ser.meta["level"].to_numpy()[ser.upper_idx]
-        q_up = fu.quantiles(paths["upper"])
-        out = {lv: q_up[:, up_lev == lv] for lv in UPPER}
-        out["SKU"] = fu.quantiles(paths["skus"])
-        out["Region × SKU"] = fu.quantiles(paths["pairs"])
+        """(3, series, months) per level present in `paths`."""
+        out = {}
+        if "upper" in paths:
+            up_lev = self.ser.meta["level"].to_numpy()[self.ser.upper_idx]
+            q_up = fu.quantiles(paths["upper"])
+            out.update({lv: q_up[:, up_lev == lv] for lv in UPPER})
+        if "skus" in paths:
+            out["SKU"] = fu.quantiles(paths["skus"])
+            out["Region × SKU"] = fu.quantiles(paths["pairs"])
         return out
 
 
@@ -189,7 +200,7 @@ def score_table(ser: ds.Series, q: dict[str, np.ndarray], T: int, years: dict[st
     """Scores per level and forecast year."""
     act = actual_by_level(ser)
     out = {}
-    for lv in LEVELS:
+    for lv in [lv for lv in LEVELS if lv in q]:
         out[lv] = []
         for j in range(years[lv]):
             a = act[lv][:, T + 12 * j:T + 12 * (j + 1)]
@@ -271,17 +282,26 @@ def run(world_dir: str | Path, out_dir: str | Path, log=print) -> dict:
     for i, name in enumerate(METHODS):
         f, trials = tune(name, ser_v, st_v, VAL_FIT, log)
         pr = Probabilistic(f, VAL_YEARS, seed=100 + i)
-        grid = []
-        for k in WIDTHS:
-            for ur in ("Bottom-up", "MinT"):
-                for lr in ("Bottom-up", "Middle-out"):
-                    tab = score_table(ser_v, pr.quantile_table(pr.paths(k, ur, lr)), VAL_FIT, years2)
-                    grid.append({"width": k, "upper": ur, "lower": lr, "score": mean_wql(tab), "table": tab})
-        best = min(grid, key=lambda g: g["score"])
-        q_best = pr.quantile_table(pr.paths(best["width"], best["upper"], best["lower"]))
-        val[name] = {"fitted": f, "trials": trials, "grid": grid, "best": best, "fallback": f.fallback, "q": q_best,
-                         "setting": (f.model.setting if f.model is not None else {})}
-        log(f"  {name}: score {best['score']:.4f} width {best['width']} {best['upper']}/{best['lower']} fallback {f.fallback}")
+        # Upper width and reconciliation on the upper levels, then the SKU width on the SKU levels.
+        grid_u = []
+        for k in WIDTHS_UPPER:
+            for rec in UPPER_RECS:
+                tab = score_table(ser_v, pr.quantile_table({"upper": pr.upper_paths(k, rec)}), VAL_FIT, years2)
+                grid_u.append({"width": k, "reconciliation": rec, "score": mean_wql(tab)})
+        bu = min(grid_u, key=lambda g: g["score"])
+        upper = pr.upper_paths(bu["width"], bu["reconciliation"])
+        grid_l = []
+        for k in WIDTHS_LOWER:
+            tab = score_table(ser_v, pr.quantile_table(pr.lower_paths(k, upper)), VAL_FIT, years2)
+            grid_l.append({"width": k, "score": mean_wql(tab)})
+        bl = min(grid_l, key=lambda g: g["score"])
+        paths = pr.paths(bu["width"], bl["width"], bu["reconciliation"])
+        q_best = pr.quantile_table(paths)
+        tab = score_table(ser_v, q_best, VAL_FIT, years2)
+        best = {"width_upper": bu["width"], "width_lower": bl["width"], "reconciliation": bu["reconciliation"], "score": mean_wql(tab), "table": tab}
+        val[name] = {"fitted": f, "trials": trials, "grid_upper": grid_u, "grid_lower": grid_l, "best": best, "fallback": f.fallback,
+                     "q": q_best, "setting": (f.model.setting if f.model is not None else {})}
+        log(f"  {name}: score {best['score']:.4f} widths {bu['width']}/{bl['width']} {bu['reconciliation']} fallback {f.fallback}")
     chosen = min(METHODS, key=lambda n: val[n]["best"]["score"])
     log(f"chosen: {chosen}")
 
@@ -295,7 +315,7 @@ def run(world_dir: str | Path, out_dir: str | Path, log=print) -> dict:
         f = refit(v["fitted"], ser_t, st_t, TEST_FIT)
         pr = Probabilistic(f, TEST_YEARS, seed=200 + i)
         b = v["best"]
-        paths = pr.paths(b["width"], b["upper"], b["lower"])
+        paths = pr.paths(b["width_upper"], b["width_lower"], b["reconciliation"])
         q = pr.quantile_table(paths)
         test[name] = {"fitted": f, "pr": pr, "paths": paths, "q": q, "table": score_table(ser_t, q, TEST_FIT, years5), "fallback": f.fallback}
         log(f"  {name}: test score {mean_wql(test[name]['table']):.4f}")
@@ -407,9 +427,8 @@ def run(world_dir: str | Path, out_dir: str | Path, log=print) -> dict:
         },
         "validation": {n: {"setting": val[n]["setting"], "fallback": val[n]["fallback"],
                             "trials": [{"setting": t["setting"], "score": t["score"]} for t in val[n]["trials"]],
-                            "grid": [{"width": g["width"], "upper": g["upper"], "lower": g["lower"], "score": g["score"]} for g in val[n]["grid"]],
-                            "best": {"width": val[n]["best"]["width"], "upper": val[n]["best"]["upper"], "lower": val[n]["best"]["lower"],
-                                      "score": val[n]["best"]["score"], "table": clean(val[n]["best"]["table"])}}
+                            "grid_upper": val[n]["grid_upper"], "grid_lower": val[n]["grid_lower"],
+                            "best": {k: (clean(v) if k == "table" else v) for k, v in val[n]["best"].items()}}
                     for n in METHODS},
         "chosen": chosen,
         "test": {n: {"table": clean(test[n]["table"]), "score": mean_wql(test[n]["table"]), "fallback": test[n]["fallback"]} for n in METHODS},

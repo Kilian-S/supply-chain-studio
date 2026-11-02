@@ -3,9 +3,11 @@ quantiles and the scores.
 
 Past errors are one-year-ahead errors at rolling origins inside the fitting window, as log((y + 1) /
 (forecast + 1)) per series and month. Each block (one origin, all series, twelve months) splits into a
-level error (the block's mean per series) and month noise (the rest). A sample path draws one block per
-forecast year for all series together; level errors add up over the years, month noise does not. A
-width factor k, chosen on the validation set, scales both.
+level error (the block's mean per series) and month noise (the rest, stored by calendar month so a
+January draws January noise). Level errors are centred per series over the origins, so the paths add
+spread around the mean forecast and no drift of their own. A sample path draws one block per forecast
+year for all series together; level errors add up over the years, month noise does not. A width factor
+k, chosen on the validation set (one for the upper levels, one for the SKU levels), scales both.
 """
 
 from __future__ import annotations
@@ -20,23 +22,30 @@ OFFSET = 1.0  # units added before taking logs, so empty months have an error
 
 @dataclass
 class ErrorBlocks:
-    level: np.ndarray  # (origin, series)
-    noise: np.ndarray  # (origin, series, 12)
+    level: np.ndarray  # (origin, series), centred per series over the origins
+    noise: np.ndarray  # (origin, series, 12) by calendar month (0 = January)
 
 
-def error_blocks(actual: np.ndarray, forecast: np.ndarray) -> ErrorBlocks:
-    """`actual` and `forecast` are (series, origin, 12)."""
+def error_blocks(actual: np.ndarray, forecast: np.ndarray, origins: list[int]) -> ErrorBlocks:
+    """`actual` and `forecast` are (series, origin, 12), months T+1..T+12 for each origin T."""
     r = np.log((actual + OFFSET) / (forecast + OFFSET))
-    lvl = r.mean(axis=2)
-    return ErrorBlocks(level=lvl.T.copy(), noise=np.transpose(r - lvl[:, :, None], (1, 0, 2)).copy())
+    lvl = r.mean(axis=2)  # (series, origin)
+    noise = r - lvl[:, :, None]
+    cal = np.empty_like(noise)
+    for j, T in enumerate(origins):
+        months = (T + np.arange(12)) % 12  # calendar month of months T+1..T+12 (month m is calendar (m - 1) % 12)
+        cal[:, j, months] = noise[:, j]
+    lvl = lvl - lvl.mean(axis=1, keepdims=True)
+    return ErrorBlocks(level=lvl.T.copy(), noise=np.transpose(cal, (1, 0, 2)).copy())
 
 
 def draw_origins(n_origins: int, years: int, n_paths: int, rng: np.random.Generator) -> np.ndarray:
     return rng.integers(0, n_origins, size=(n_paths, years))
 
 
-def sample_paths(mean: np.ndarray, blocks: ErrorBlocks, draws: np.ndarray, k: float) -> np.ndarray:
-    """Paths (path, series, months) around mean forecasts (series, months), with the drawn origins."""
+def sample_paths(mean: np.ndarray, blocks: ErrorBlocks, draws: np.ndarray, k: float, origin: int) -> np.ndarray:
+    """Paths (path, series, months) around mean forecasts (series, months T+1..) from forecast origin T,
+    with the drawn origins."""
     n_paths, years = draws.shape
     n, H = mean.shape
     out = np.empty((n_paths, n, H), dtype=np.float32)
@@ -44,7 +53,8 @@ def sample_paths(mean: np.ndarray, blocks: ErrorBlocks, draws: np.ndarray, k: fl
     for j in range(min(years, H // 12)):
         o = draws[:, j]
         cum += blocks.level[o]
-        logm = k * (cum[:, :, None] + blocks.noise[o])
+        months = (origin + 12 * j + np.arange(12)) % 12
+        logm = k * (cum[:, :, None] + blocks.noise[o][:, :, months])
         out[:, :, 12 * j:12 * (j + 1)] = (mean[None, :, 12 * j:12 * (j + 1)] + OFFSET) * np.exp(logm) - OFFSET
     return np.maximum(out, 0.0)
 
@@ -62,7 +72,7 @@ def shrunk_covariance(e: np.ndarray) -> np.ndarray:
     x = e / sd
     R = x.T @ x / n
     w = np.einsum("ti,tj->tij", x, x)
-    var_r = n / (n - 1) ** 2 * ((w - R[None]) ** 2).sum(0)  # variance of the sample correlations
+    var_r = n / (n - 1) ** 3 * ((w - R[None]) ** 2).sum(0)  # variance of the sample correlations
     off = ~np.eye(len(R), dtype=bool)
     lam = float(np.clip(var_r[off].sum() / max((R[off] ** 2).sum(), 1e-12), 0, 1))
     Rs = (1 - lam) * R

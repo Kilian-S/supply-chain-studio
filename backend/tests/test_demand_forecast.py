@@ -101,9 +101,22 @@ def test_middle_out_children_sum_to_their_parent():
 def test_paths_carry_level_errors_over_the_years():
     blocks = fu.ErrorBlocks(level=np.array([[0.1], [0.1]]), noise=np.zeros((2, 1, 12)))
     draws = np.zeros((1, 3), dtype=int)
-    p = fu.sample_paths(np.full((1, 36), 99.0), blocks, draws, k=1.0)
+    p = fu.sample_paths(np.full((1, 36), 99.0), blocks, draws, k=1.0, origin=36)
     assert np.allclose(p[0, 0, 0], 100 * np.exp(0.1) - 1)
     assert np.allclose(p[0, 0, 24], 100 * np.exp(0.3) - 1)
+
+
+def test_error_blocks_are_centred_and_noise_follows_the_calendar():
+    actual = np.ones((1, 2, 12)) * 9
+    actual[0, 0, 0] = 19  # a high first month at origin 13 (month 14, a February)
+    forecast = np.ones((1, 2, 12)) * 9
+    forecast[0, 1] = 4  # the second origin's year runs 1.0 above in log terms
+    b = fu.error_blocks(actual, forecast, origins=[13, 24])
+    assert np.allclose(b.level.sum(axis=0), 0)  # centred over origins
+    assert b.noise[0, 0].argmax() == 1  # stored as February
+    draws = np.zeros((1, 1), dtype=int)
+    p = fu.sample_paths(np.full((1, 12), 9.0), b, draws, k=1.0, origin=36)  # month 37 is a January
+    assert p[0, 0].argmax() == 1
 
 
 def test_weighted_quantile_loss_equals_wape_when_quantiles_coincide():
@@ -139,7 +152,9 @@ def test_outputs():
     # The method was chosen on the validation set alone.
     assert o["chosen"] == min(df.METHODS, key=lambda n: val[n]["best"]["score"])
     for n in df.METHODS:
-        assert val[n]["best"]["score"] == pytest.approx(min(g["score"] for g in val[n]["grid"]))
+        best = val[n]["best"]
+        assert best["width_upper"] == min(val[n]["grid_upper"], key=lambda g: g["score"])["width"]
+        assert best["width_lower"] == min(val[n]["grid_lower"], key=lambda g: g["score"])["width"]
         assert len(o["test"][n]["table"]["Total"]) == 5 and len(o["test"][n]["table"]["SKU"]) == 2
     assert o["facts"]["replications"] == 200
     gt = o["capacity"]["curves"]["Ground truth"]["expected"]
@@ -147,3 +162,12 @@ def test_outputs():
         assert len(c["expected"]) == len(o["capacity"]["rho"])
         if plan != "Ground truth":  # nothing beats planning on the true process by more than sampling noise
             assert np.all(np.array(c["expected"]) >= np.array(gt) * 0.99)
+
+
+def test_shrinkage_is_light_when_errors_share_a_strong_common_factor():
+    rng = np.random.default_rng(5)
+    common = rng.normal(size=(300, 1))
+    e = common + 0.3 * rng.normal(size=(300, 6))
+    cov = fu.shrunk_covariance(e)
+    corr = cov / np.sqrt(np.outer(np.diag(cov), np.diag(cov)))
+    assert corr[0, 1] > 0.8  # the true correlation (about 0.92) survives; full shrinkage would give 0
