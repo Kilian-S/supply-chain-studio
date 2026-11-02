@@ -24,13 +24,19 @@ State on 2 November 2026, for a new session (local or cloud). Read `CLAUDE.md` f
    communities.
 3. Keyboard access to the matrix and scatter hover read-outs.
 
+## In progress
+
+- **Demand forecast (model B).** Proposal and model design agreed with Kilian on 2 November 2026
+  (`design/demand-forecast/PROPOSAL.md`). He asked for phases 0 to 3 (decisions recorded, world years
+  6 to 10 and ground truth, models, a results report), with an independent agent checking the work
+  after phase 2. The page (phase 4) waits for his review of the results report.
+
 ## Next
 
-The remaining models, in storyline order, are B (long-range demand forecasting), C (new-region demand),
-A (what-if surrogate), H (risk classification), O (network design MILP). See `ML_ROADMAP.md`,
-section 6. Each needs its implementation discussed with Kilian before building. Prepare a proposal
-(inputs, method, validation on the year 4 and year 5 split, baselines, business check, draft
-storyline under the design rules) and wait for his decisions.
+The remaining models after B, in storyline order, are C (new-region demand), A (what-if surrogate),
+H (risk classification), O (network design MILP). See `ML_ROADMAP.md`, section 6. Each needs its
+implementation discussed with Kilian before building. Prepare a proposal (inputs, method, validation,
+baselines, business check, draft storyline under the design rules) and wait for his decisions.
 
 ## How Kilian works
 

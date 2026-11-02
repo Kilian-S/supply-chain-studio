@@ -1,7 +1,8 @@
 # Demand forecast, implementation proposal
 
 Model B from `ML_ROADMAP.md`, revised 2 November 2026 after Kilian asked for a five-year forecast.
-Nothing is built yet. Each section ends with a recommendation; the decisions are collected at the end.
+Kilian agreed every recommendation on 2 November 2026, with one change (the catalogue stays near 300
+SKUs, section 2) and the model design in section 4a. Phases 0 to 3 of the build are under way.
 
 Figures come from world v1, seed 7, training set (years 1 to 3) unless stated. While profiling I also
 printed yearly unit totals for all five years, the generator's expected units by year, and the
@@ -33,12 +34,13 @@ will each region and category sell over five years, and how sure are we?" (Kilia
 | Files | `orders_future.parquet`, `order_lines_future.parquet` and `skus_future.parquet` (new SKUs only) in `data/world_v1/`, so models that read `order_lines.parquet` see nothing new |
 | Same rules as years 1 to 5 | Retail season, SKU seasonality, regional taste, basket sizes, bulk orders, no market growth, no prices or promotions |
 | New SKUs | About 7 launches a year (the average of years 1 to 5, 37 launches in 5 years), drawn with the original type mix and parameter ranges, ids from 301 |
-| Ends of life | Fading SKUs end as in years 1 to 5 (40% of them at a random day); every SKU launched in years 6 to 10 follows the same rules |
+| Ends of life | At the start of each of years 6 to 10, the SKUs with the lowest expected sales are delisted, as many as launch that year, so the catalogue stays near 300 (Kilian's choice, 2 November 2026). Fading SKUs that end in years 1 to 5 keep their end days |
 | Growth ceiling | A growing SKU's growth phase ends at a random age between 4 and 7 years, then it stays flat. Before day 1,825 the formula is unchanged |
 
 Why these rules. The generator launches no SKUs after about year 3 and lets growing SKUs grow without
-limit, so a plain continuation would shrink the catalogue and explode a few SKUs. Turnover at the
-historical average rate keeps the catalogue near 300 SKUs.
+limit, so a plain continuation would leave the catalogue frozen and explode a few SKUs. Launches at
+the historical average rate, matched by delisting the slowest sellers, keep the catalogue near 300
+SKUs.
 
 What it costs in honesty. We write the rules of the years we then test on, which could suit the model
 by design. The rules above are fixed before any model is fitted and are not changed after results are
@@ -89,6 +91,34 @@ coming.
 
 **Recommendation.** The four methods. New backend dependency `lightgbm` only; the network uses
 scikit-learn, so no PyTorch.
+
+## 4a. Model design for LightGBM and the neural network (agreed)
+
+Explained from first principles in the chat of 2 November 2026; each choice below was agreed.
+
+| # | Choice | Why |
+|---|---|---|
+| A1 | Forecasting as supervised regression on (series, forecast origin) examples | Both models then solve the same regression problem across many series |
+| A2 | One global model across all 2,744 series and six levels, level as a feature | Three years per series is too little alone; sparse series borrow patterns from large ones |
+| A3 | Target divided by the series' mean over the 12 months before the origin (from first sale if younger); fewer than 3 months of sales falls back to seasonal naive | One scale for all series; trees cannot extrapolate, relative levels stay in range |
+| A4 | Twelve months in, twelve out; five steps for five years | No example in years 1 to 3 has five years after it, so a direct five-year model is impossible |
+| A5 | Each level weighted equally in training | Train on the loss used to choose |
+| A6 | Predict the mean (squared error); uncertainty from past errors | Means add up across levels; sample paths for O; same uncertainty method for all |
+| A7 | Inputs are the last 12 scaled months, growth over the last year, months since first sale, target month, months ahead, level, category, region and its features, SKU price, volume, empty-month share, bulk share | Level, season, life-cycle stage and product traits |
+| A8 | Training windows only inside the fitting years | Validation years stay unseen |
+| A9 | Settings chosen on years 4 and 5, then refit on years 1 to 5 for the test | The agreed rule |
+| B1 | LightGBM, one row per series, origin and month ahead | Shares what the twelve months have in common |
+| B2 | Squared error and Tweedie both tried as settings | Tweedie may suit the sparse series; validation decides |
+| B3 | Category and region as native categorical features | No one-hot columns needed |
+| B4 | About 25 settings (leaves, minimum rows per leaf, sampling, loss), trees chosen by validation error | LightGBM's controls against overfitting |
+| B5 | SHAP values in the methods drawer | Makes the trees readable |
+| C1 | scikit-learn multilayer perceptron, no PyTorch | Mean prediction needs no custom loss |
+| C2 | One example per series and origin, twelve outputs | Keeps the seasonal shape consistent |
+| C3 | Inputs standardised, categories one-hot, missing values as 0 plus a flag | What a network needs |
+| C4 | Two hidden layers of 64 ReLU units, Adam | Sized to about 36,000 overlapping examples |
+| C5 | L2 penalty and early stopping on the latest windows, not a random tenth | Overlapping windows would leak into a random hold-out |
+| C6 | Five networks from different random starts, averaged | Steadies results on little data |
+| C7 | About 10 settings (width, penalty, learning rate) | Small grid for a small model |
 
 ## 5. Uncertainty
 
@@ -225,9 +255,9 @@ bootstrap, N-BEATS, multilayer perceptron, sample average approximation, critica
    `copy.ts` under `lexicon.test.ts`.
 4. A `DESIGN_REVIEW.md` entry per review round.
 
-## 13. Decisions for Kilian
+## 13. Decisions
 
-Each with my recommendation; "yes to all" works.
+All agreed by Kilian on 2 November 2026.
 
 | # | Decision | Recommendation |
 |---|---|---|
