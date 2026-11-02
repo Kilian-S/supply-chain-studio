@@ -386,8 +386,8 @@ def main(world_dir: str, out_dir: str) -> None:
     for c in np.unique(labels):
         members = np.nonzero(labels == c)[0]
         if len(members) > 1:
-            top2 = members[np.argsort(-st["sku_count"][members], kind="stable")[:2]]
-            community_names[int(c)] = f"{names[top2[0]]} and {names[top2[1]]}"
+            top = members[np.argmax(st["sku_count"][members])]
+            community_names[int(c)] = f"{names[top]} +{len(members) - 1}"  # best seller plus the others
     graph = {
         "nodes": [{"id": int(s.sku_id), "name": s.name, "category": s.category, "baskets": int(st["sku_count"][i]),
                    "community": int(labels[i]), "alone": bool((labels == labels[i]).sum() == 1), "bundle": int(truth[i]),

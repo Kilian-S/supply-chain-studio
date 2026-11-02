@@ -217,3 +217,16 @@ context goes in captions rather than labels) are included.
   (community and lift approved, "accepted pair" rejected for "linked pair"), Category as the
   comparison, keep the count matrix, keep the quarter and disclose it, workload capacity.
 - **Ready for Kilian's screen-by-screen review.**
+
+## Bought together, Kilian's first review (2026-11-02)
+
+- **Comment.** Screen 2 caption is slop and unnecessary. Screen 3 labels could be more technical; the
+  note under the graph is superfluous. "Hidden bundles" sounds colloquial. Community names made of two
+  SKU codes do not work. Explain screen 6 and the results logic; explain the rules simply.
+- **Change.** Both captions removed. Scatter axes "Expected co-occurrences" and "Observed
+  co-occurrences", diagonal "Lift = 1". "Hidden bundles" became "Ground-truth bundles", screen 5
+  "Communities versus ground truth." Communities named by their best seller plus the count of the
+  others ("ELE-0005 +5"), size column dropped. Screen 6 drawer opens with how to read it. Results
+  drawer gains a plain table of the rules and why the saving dips at 5 FCs.
+- **Habit.** Captions that describe the encoding instead of adding a fact; everyday words where the
+  audience expects the technical term; names that read as two items instead of one group.

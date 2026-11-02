@@ -9,7 +9,7 @@ import Projector from '../sku/Projector'
 import { modelFile } from '../types'
 import { Bars, Drawer, Numbers, Screen, Years } from '../ui'
 import '../showcase.css'
-import { COPY as C, RULE_HOW, RULES, RULES_IN_PROSE, type RuleKey } from './copy'
+import { COPY as C, RULE_HOW, RULE_SIMPLE, RULES, RULES_IN_PROSE, type RuleKey } from './copy'
 import FcColumns from './FcColumns'
 import type { AffinityGraph, AffinityMatrix, AffinityNode, AffinityOverview, PriceRow } from './types'
 
@@ -340,7 +340,7 @@ function CountsScreen({ o, d, m, ps, failed }: { o: AffinityOverview; d: Derived
     <><b>{C.pair(d.nodes[a].name, d.nodes[b].name)}</b><span><span className="k">{C.counts.legend}</span> {m ? dec(m.count[a][b]) : ''}</span></>
   ), [d, m])
   return (
-    <Screen id="counts" headline={C.counts.headline} caption={C.counts.caption}
+    <Screen id="counts" headline={C.counts.headline}
       drawer={<Drawer>
         <P text={C.counts.drawer.formula} />
         <p>{C.counts.drawer.seen(dec(o.facts.pairs_seen), dec(o.facts.pairs_possible))}</p>
@@ -386,7 +386,7 @@ function ChanceScreen({ g, m, ps, failed }: { g: AffinityGraph } & MatrixProps) 
   }, [g])
   const tick = useCallback((v: number) => v.toLocaleString('en-GB', { maximumSignificantDigits: 2 }), [])
   return (
-    <Screen id="chance" headline={C.chance.headline} caption={C.chance.caption}
+    <Screen id="chance" headline={C.chance.headline}
       drawer={<Drawer>
         <p>{C.chance.drawer.strata}</p>
         <P text={C.chance.drawer.expected} />
@@ -518,7 +518,7 @@ function NetworkScreen({ o, g, d, m, ps, failed }: { o: AffinityOverview; g: Aff
               <div className="sc-legend scroll">
                 {view.legend.map((l) => (
                   <button key={l.key} aria-pressed={isolate === l.key} onClick={() => setIsolate(isolate === l.key ? null : l.key)}>
-                    <i className="sc-dot" style={{ background: l.color }} /><span>{l.name}</span><span className="num sc-caption">{l.n}</span>
+                    <i className="sc-dot" style={{ background: l.color }} /><span>{l.name}</span>
                   </button>
                 ))}
               </div>
@@ -687,6 +687,7 @@ function AssignScreen({ o, d, fcs, setFcs }: { o: AffinityOverview; d: Derived; 
   return (
     <Screen id="assign" headline={C.assign.headline} caption={C.assign.caption}
       drawer={<Drawer>
+        <p>{C.assign.drawer.reading}</p>
         <p>{C.assign.drawer.split}</p>
         <p>{C.assign.drawer.site(String(o.settings.central_region), pc(o.settings.slack))}</p>
         <div className="table-wrap" style={{ maxWidth: 860 }}>
@@ -772,6 +773,12 @@ function ResultsScreen({ o, fcs, setFcs }: { o: AffinityOverview; fcs: number; s
     <Screen id="results" headline={C.results.headline}
       drawer={<Drawer>
         <p>{C.results.drawer.relative}{categoryFewest && unlimitedFewer ? ` ${C.results.drawer.why}` : ''}</p>
+        <div className="table-wrap">
+          <table className="grid">
+            <thead><tr><th>{C.results.drawer.colRule}</th><th>{C.results.drawer.colIdea}</th></tr></thead>
+            <tbody>{RULE_ORDER.map((r) => <tr key={r}><td style={{ whiteSpace: 'nowrap' }}>{RULES[r]}</td><td>{RULE_SIMPLE[r]}</td></tr>)}</tbody>
+          </table>
+        </div>
         <p>{C.results.drawer.test(dec(first.orders), dec(first.multi))}</p>
         <p>{C.results.drawer.runs}</p>
         <div className="table-wrap">
@@ -802,6 +809,7 @@ function ResultsScreen({ o, fcs, setFcs }: { o: AffinityOverview; fcs: number; s
         <p>{pc(lo) === pc(hi)
           ? C.results.drawer.rangeOne(String(Math.min(...ks)), String(Math.max(...ks)), pc(lo))
           : C.results.drawer.range(String(Math.min(...ks)), String(Math.max(...ks)), pc(lo), pc(hi))}</p>
+        <p>{C.results.drawer.dip}</p>
         <LineChart title={C.results.drawer.chartTitle} x={o.settings.fcs} xLabel={C.results.drawer.chartX} series={series} height={300}
           format={(v) => dec(v)} hideTitle hideToggle hideLegend endLabels endGroup={0.5} yLabel={C.results.drawer.chartY} />
         <p>{C.results.drawer.cost}</p>
