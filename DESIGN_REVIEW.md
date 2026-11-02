@@ -230,3 +230,11 @@ context goes in captions rather than labels) are included.
   drawer gains a plain table of the rules and why the saving dips at 5 FCs.
 - **Habit.** Captions that describe the encoding instead of adding a fact; everyday words where the
   audience expects the technical term; names that read as two items instead of one group.
+
+## Rules updated after the second model page (2026-11-02)
+
+Added to the global design rules (`~/.claude/CLAUDE.md`): technical terms over paraphrases and coined
+names (rule 2); never caption the encoding (rule 3); group names read as one group, and model quality
+kept apart from business value (rule 6); a vocabulary chain where the story changes concept (rule 7);
+self-explaining screens with drawn constraints and explained surprises (rule 8); how to work alone,
+with independent critics, disclosure and a list of decisions to revisit (rule 13).
