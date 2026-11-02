@@ -13,7 +13,7 @@ export const RULES: Record<RuleKey, string> = {
   popularity: 'Best sellers spread',
   best_sellers: 'Best sellers together',
   communities: 'Our communities',
-  hidden_bundles: 'Hidden bundles',
+  hidden_bundles: 'Ground-truth bundles',
 }
 
 // Rule names inside sentences, lower case.
@@ -23,7 +23,7 @@ export const RULES_IN_PROSE: Record<RuleKey, string> = {
   popularity: 'best sellers spread',
   best_sellers: 'best sellers together',
   communities: 'our communities',
-  hidden_bundles: 'hidden bundles',
+  hidden_bundles: 'ground-truth bundles',
 }
 
 // How each rule places SKUs, for the table in the assignment drawer.
@@ -33,7 +33,17 @@ export const RULE_HOW: Record<RuleKey, string> = {
   popularity: 'Best sellers first, each to the FC with the most room, so best sellers spread evenly.',
   best_sellers: 'Best sellers first, each to the first FC with room, filling FC 1, then FC 2, and so on.',
   communities: 'Whole communities, busiest first, then unlinked SKUs, best sellers first, each to the FC with the most room.',
-  hidden_bundles: 'The same with the hidden bundles. Reference only, since a real shop does not know them.',
+  hidden_bundles: 'The same with the ground-truth bundles. Reference only, since a real shop does not know them.',
+}
+
+// Each rule in simple terms, for the results drawer.
+export const RULE_SIMPLE: Record<RuleKey, string> = {
+  random: 'SKUs are shuffled and dealt out. A baseline with no logic at all.',
+  category: 'Each category is kept in one FC, a common default. Products bought together across categories end up apart.',
+  popularity: 'Best sellers are dealt out evenly, so every FC shares the busy SKUs.',
+  best_sellers: 'Best sellers are packed into the first FC, then the second, so many orders could be filled from one FC.',
+  communities: 'SKUs bought together on the training set are stored together, one community per FC where it fits.',
+  hidden_bundles: 'The same with the bundles the simulator planted. It shows the best this approach could reach.',
 }
 
 export const COPY = {
@@ -66,7 +76,6 @@ export const COPY = {
 
   counts: {
     headline: 'Orders per SKU pair.',
-    caption: 'Each cell is a pair of SKUs, best sellers first.',
     matrixTitle: 'Orders with both SKUs for every pair of SKUs, best sellers first',
     legend: 'Orders with both',
     loading: 'Loading...',
@@ -74,7 +83,7 @@ export const COPY = {
     drawer: {
       formula: String.raw`Orders with both SKUs \(i\) and \(j\) are counted on the training set, \(n_{ij} = \#\{\, o \mid i \in o \text{ and } j \in o \,\}\) over all orders \(o\).`,
       seen: (seen: string, possible: string) => `${seen} of the ${possible} pairs are bought together at least once.`,
-      chance: 'Two best sellers meet in many orders by chance alone. Under independence, orders with both by chance are about the product of their order counts divided by the number of orders, so the most frequent pairs are mostly pairs of best sellers.',
+      chance: 'Two best sellers meet in many orders by chance alone. Under independence, the expected co-occurrences of two SKUs are about the product of their order counts divided by the number of orders, so the most frequent pairs are mostly pairs of best sellers.',
       topTitle: 'The 20 most frequent pairs',
       colPair: 'Pair',
       colBoth: 'Orders with both',
@@ -84,19 +93,18 @@ export const COPY = {
 
   chance: {
     headline: 'Orders per SKU pair versus chance.',
-    caption: 'Each dot is a pair of SKUs.',
-    chartTitle: 'Orders with both against orders with both by chance, for every pair bought together at least once',
-    x: 'Orders with both by chance',
-    y: 'Orders with both',
-    diagonal: 'As often as chance',
+    chartTitle: 'Observed against expected co-occurrences, for every pair bought together at least once',
+    x: 'Expected co-occurrences',
+    y: 'Observed co-occurrences',
+    diagonal: 'Lift = 1',
     linked: 'Linked pairs',
     other: 'Other pairs',
-    both: 'Orders with both',
+    both: 'Observed co-occurrences',
     lift: 'Lift',
     drawer: {
       strata: 'Chance is computed within orders of the same region (regions sell different SKUs), the same size (2, 3, 4, 5+, since large orders hold many) and the same quarter (91-day block, since growing or seasonal SKUs sell in the same months). Orders with one SKU hold no pair and are left out.',
-      expected: String.raw`Orders with both by chance are summed over these strata, \(E_{ij} = \sum_s n_{i,s}\, n_{j,s} / N_s\), where \(N_s\) is the number of orders in stratum \(s\) and \(n_{i,s}\) the number of them holding SKU \(i\). The quarter was added after the first run of the model.`,
-      lift: String.raw`Lift is orders with both divided by orders with both by chance, \(\text{lift}_{ij} = n_{ij} / E_{ij}\).`,
+      expected: String.raw`Expected co-occurrences are summed over these strata, \(E_{ij} = \sum_s n_{i,s}\, n_{j,s} / N_s\), where \(N_s\) is the number of orders in stratum \(s\) and \(n_{i,s}\) the number of them holding SKU \(i\). The quarter was added after the first run of the model.`,
+      lift: String.raw`Lift is observed divided by expected co-occurrences, \(\text{lift}_{ij} = n_{ij} / E_{ij}\).`,
       pvalue: String.raw`Each pair gets a Poisson tail p-value, \(p_{ij} = P(X \ge n_{ij})\) with \(X \sim \text{Poisson}(E_{ij})\). Its variance is at least the hypergeometric one, so the test is slightly conservative.`,
       bh: 'Benjamini-Hochberg over all pairs is designed to keep the false discovery rate among the pairs that pass it at the chosen level. A linked pair passes this test and has lift above 1.',
       luck: (big: string, small: string, top: string, orders: string) =>
@@ -136,7 +144,7 @@ export const COPY = {
   },
 
   truth: {
-    headline: 'Communities versus the hidden bundles.',
+    headline: 'Communities versus ground truth.',
     caption: 'Agreement with the bundles the simulator plants (ARI, 1 is a perfect match).',
     categories: 'Categories',
     counts: 'Communities from raw counts',
@@ -156,7 +164,7 @@ export const COPY = {
       cutSame: 'The five-order cut was set in the first version of the model, and the share is the same for any cut from 3 to 10 orders.',
       cutRange: (lo: string, hi: string) => `The five-order cut was set in the first version of the model. For cuts from 3 to 10 orders the share lies between ${lo} and ${hi}.`,
       quarter: (without: string, withQ: string, ari: string) =>
-        `The first run computed chance within region and order size only. This check then showed linked pairs outside any bundle, between SKUs launched or growing at the same time or peaking in the same season, so the quarter was added. On validation cost alone, the version without the quarter would have been chosen (${without} against ${withQ}), and its agreement was ${ari}. The hidden bundles therefore helped choose the chance baseline behind our communities.`,
+        `The first run computed chance within region and order size only. This check then showed linked pairs outside any bundle, between SKUs launched or growing at the same time or peaking in the same season, so the quarter was added. On validation cost alone, the version without the quarter would have been chosen (${without} against ${withQ}), and its agreement was ${ari}. The ground-truth bundles therefore helped choose the chance baseline behind our communities.`,
       quarterCheaper: (withQ: string, without: string, ari: string) =>
         `The first run computed chance within region and order size only. This check then showed linked pairs outside any bundle, between SKUs launched or growing at the same time or peaking in the same season, so the quarter was added. The version with the quarter also costs less on the validation set (${withQ} against ${without}). Without the quarter, agreement was ${ari}.`,
     },
@@ -174,6 +182,7 @@ export const COPY = {
     unlinked: 'Unlinked SKU',
     square: (name: string, community: string, fc: string) => `${name}, ${community}, ${fc}`,
     drawer: {
+      reading: 'Each rule decides which FC stores each SKU. A community whose squares all sit in one FC is kept whole, so an order of its SKUs ships as one parcel. Pale squares mark communities split across FCs, whose orders can need more than one parcel.',
       split: 'An order with SKUs in two FCs ships as two parcels and counts as a split order.',
       site: (region: string, slack: string) =>
         `All FCs sit at the central site (region ${region}). Each SKU is stored in exactly one FC. Each FC may hold an equal share of the SKUs and of the workload (order lines in the training set), plus ${slack}.`,
@@ -198,7 +207,7 @@ export const COPY = {
       ties: (levels: string, pairs: string) => `The levels ${levels} give the same ${pairs} linked pairs and tie on cost, and ties go to the first level tried.`,
       gapUnder: (limit: string) => `The largest cost gap between levels is under ${limit}.`,
       gap: (gap: string) => `The largest cost gap between levels is ${gap}.`,
-      twoChoices: 'The quarter, described with the hidden bundles, and the workload limit above are the two choices not made on the validation set alone.',
+      twoChoices: 'The quarter, described with the ground truth, and the workload limit above are the two choices not made on the validation set alone.',
     },
   },
 
@@ -212,6 +221,8 @@ export const COPY = {
     barsTitle: 'Split orders on the test set by rule',
     drawer: {
       relative: 'Changes are relative to the category rule.',
+      colIdea: 'In simple terms',
+      dip: 'Nearly all of the saving comes from orders made only of SKUs from one community, which our communities never split. The category rule splits more of these as FCs are added, so the saving grows up to 4 FCs. From there it already splits almost all of them, so the saving stops growing while split orders keep rising, and the percentage dips slightly at 5 FCs.',
       why: 'Of the plain rules it split the fewest orders on the validation set, apart from best sellers together without the workload limit.',
       test: (orders: string, multi: string) => `The test set holds ${orders} orders, of which ${multi} hold two or more SKUs.`,
       runs: 'The test set was priced in more than one run while the method was being fixed. The quarter and the workload limit were added between runs, as the drawers above describe.',
@@ -230,7 +241,7 @@ export const COPY = {
       chartX: 'FCs',
       chartY: 'Split orders (%)',
       cost: 'Delivery cost moves little because most of it is the per-kg charge, which stays the same when an order ships as two parcels.',
-      same: 'Our communities and the hidden bundles give the same result at every number of FCs.',
+      same: 'Our communities and the ground-truth bundles give the same result at every number of FCs.',
     },
   },
 }
@@ -247,6 +258,6 @@ export const WORDING = (() => {
   const out = { surface: [] as string[], drawer: [] as string[] }
   collect(COPY, false, out)
   collect(RULES, false, out)
-  collect({ drawer: [RULES_IN_PROSE, RULE_HOW] }, false, out)
+  collect({ drawer: [RULES_IN_PROSE, RULE_HOW, RULE_SIMPLE] }, false, out)
   return out
 })()
