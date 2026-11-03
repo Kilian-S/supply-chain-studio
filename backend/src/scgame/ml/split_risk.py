@@ -227,21 +227,24 @@ def log_loss(y: np.ndarray, p: np.ndarray) -> float:
 
 
 def replay_rates(sim: ss.Outcome) -> np.ndarray:
-    """In-stock rate per (FC, SKU, month) from a simulated year, falling back to the SKU's yearly rate at
-    the FC, then the FC's rate, then 1."""
+    """In-stock rate per (FC, SKU, route class, month) from a simulated year. Route class 0 counts lines
+    trying the FC in the first routing round, class 1 lines trying it in a later round (served after the
+    first round, and for most of them only because an earlier FC ran out). Missing cells fall back to the
+    SKU's yearly rate at the FC in that class, then the FC's rate in that class, then 1."""
     att, fil = sim.attempts, sim.fills
     with np.errstate(divide="ignore", invalid="ignore"):
         monthly = fil / att
-        yearly = fil.sum(axis=2) / att.sum(axis=2)
-        fc = fil.sum(axis=(1, 2)) / att.sum(axis=(1, 2))
+        yearly = fil.sum(axis=3) / att.sum(axis=3)
+        fc = fil.sum(axis=(1, 3)) / att.sum(axis=(1, 3))
     fc = np.where(np.isfinite(fc), fc, 1.0)
-    yearly = np.where(np.isfinite(yearly), yearly, fc[:, None])
-    return np.where(np.isfinite(monthly), monthly, yearly[:, :, None])
+    yearly = np.where(np.isfinite(yearly), yearly, fc[:, None, :])
+    return np.where(np.isfinite(monthly), monthly, yearly[:, :, :, None])
 
 
 def replay_probability(w: ss.World, p: ss.Plan, order_year: int, rates: np.ndarray) -> np.ndarray:
     """Split probability per order of `order_year` if each line's stock-outs were independent coin flips
-    with the replayed in-stock rates. Lines try their FCs in route order."""
+    with the replayed in-stock rates. Lines try their FCs in route order, each FC at the rate of the
+    routing round the line reaches it in (first round, or later)."""
     sl = w.year_lines(order_year)
     o, s, r = w.order[sl], w.sku[sl], w.region[sl]
     oi = o - o.min()
@@ -252,7 +255,7 @@ def replay_probability(w: ss.World, p: ss.Plan, order_year: int, rates: np.ndarr
     remain = np.ones(len(s))
     for k in range(n_fc):
         f = p.pref[r, k]
-        a = np.where(p.listed[f, s], rates[f, s, month], 0.0)
+        a = np.where(p.listed[f, s], rates[f, s, min(k, ss.ROUTE_CLASSES - 1), month], 0.0)
         ship[np.arange(len(s)), f] = remain * a
         remain = remain * (1 - a)
     lost_all = np.multiply.reduceat(remain, starts)
@@ -534,23 +537,27 @@ def main(world_dir: str, models_dir: str, out_dir: str) -> None:
     log("test set scored")
 
     # ---- Noise floor: other random orders of a day ---------------------------------------------
-    flips, sds = [], []
+    flips, single, sds = [], [], []
     for k, net in enumerate(nets["test"]):
         p = T["plans"][k]
         base = T["sims"][k][0]
         multi = base.n_skus > 1
         runs = np.stack([base.split[multi]] + [ss.simulate(w, p, TEST_YEAR, seed).split[multi] for seed in NOISE_SEEDS])
         flips.append(((runs != runs[0]).any(axis=0)).mean())
+        single.append((runs[1:] != runs[0]).mean())
         sds.append(runs.mean(axis=1).std())
-    noise = {"seeds": NOISE_SEEDS, "orders_flipping": float(np.mean(flips)), "split_rate_sd": float(np.mean(sds))}
+    noise = {"seeds": NOISE_SEEDS, "orders_flipping_any_rerun": float(np.mean(flips)),
+             "orders_flipping_one_rerun": float(np.mean(single)), "split_rate_sd": float(np.mean(sds))}
     log("noise floor done")
 
     # ---- SHAP values ---------------------------------------------------------------------------
     sample = np.random.default_rng(SEED + 2).choice(len(T["y"]), size=min(SHAP_ROWS, len(T["y"])), replace=False)
     contrib = booster.predict(gbm_frame(T["X"].iloc[sample]), num_iteration=trees, pred_contrib=True)
     mean_abs = np.abs(contrib[:, :-1]).mean(axis=0)
+    group_of = np.array([g for _, g, _ in FEATURES])
+    # A group's value per order is the sum of its features' contributions; reported as its mean absolute value.
     shap = {"features": {n: float(v) for n, v in zip(NAMES, mean_abs)},
-            "groups": {g: float(sum(v for (n, gg, _), v in zip(FEATURES, mean_abs) if gg == g)) for g in dict.fromkeys(f[1] for f in FEATURES)},
+            "groups": {g: float(np.abs(contrib[:, :-1][:, group_of == g].sum(axis=1)).mean()) for g in dict.fromkeys(group_of.tolist())},
             "rows": len(sample)}
 
     # ---- SKUs at risk on the test networks -----------------------------------------------------
@@ -611,13 +618,30 @@ def main(world_dir: str, models_dir: str, out_dir: str) -> None:
                                "extra_parcel_cost": float((sim.cost - sim.cost_one)[sim.split].sum())})
     log("business candidates done")
     estimate_error = {}
+    orders = np.array([c["multi_orders"] for c in candidates])
+    cost_per_split = np.array([c["extra_parcel_cost"] / max(c["split_orders"], 1) for c in candidates])
+    abs_err = {}
     for m in METHODS:
         err = np.array([c["estimates"][m] - c["simulated"] for c in candidates])
-        orders = np.array([c["multi_orders"] for c in candidates])
+        abs_err[m] = np.abs(err)
         estimate_error[m] = {"mae_points": float(np.abs(err).mean()), "bias_points": float(err.mean()),
                              "mae_orders": float(np.abs(err * orders).mean()),
-                             "mae_dollars": float(np.abs(err * orders).mean() * extra_per_split),
-                             "test_networks_mae_points": float(np.abs(err[:N_TEST]).mean())}
+                             "mae_dollars": float(np.abs(err * orders * cost_per_split).mean()),
+                             "test_networks_mae_points": float(np.abs(err[:N_TEST]).mean()),
+                             "closer_than_gbm": int((abs_err[m] < np.abs(np.array([c["estimates"]["gbm"] - c["simulated"] for c in candidates]))).sum())}
+    # 95% intervals of differences in mean absolute error, resampling clusters (each test network alone,
+    # each decision site set as one cluster, since its five candidates share sites).
+    cluster = np.array([f"t{c['network']}" if c["set"] == "test" else "d" + "-".join(map(str, c["sites"])) for c in candidates])
+    names, cid = np.unique(cluster, return_inverse=True)
+    draws = np.random.default_rng(SEED + 3).integers(0, len(names), size=(BOOTSTRAP, len(names)))
+    weight = np.stack([np.bincount(d, minlength=len(names)) for d in draws])[:, cid]  # draws x candidates
+    business_intervals = {}
+    for m in METHODS:
+        if m == "gbm":
+            continue
+        diff = (weight * (abs_err["gbm"] - abs_err[m])).sum(axis=1) / weight.sum(axis=1)
+        business_intervals[f"gbm_minus_{m}"] = {"points": float((abs_err["gbm"] - abs_err[m]).mean()),
+                                                "interval": np.percentile(diff, [2.5, 97.5]).tolist()}
     decisions = []
     for sites in DECISION_SITES:
         group = [c for c in candidates if c["set"] == "decision" and tuple(c["sites"]) == sites]
@@ -639,8 +663,9 @@ def main(world_dir: str, models_dir: str, out_dir: str) -> None:
              "whole, not flagged, 3 or more SKUs": ~y0 & ~r0 & (sim0.n_skus >= 3), "whole, not flagged, 2 SKUs": ~y0 & ~r0 & (sim0.n_skus == 2)}
     p_gbm0 = predict["gbm"](X0)
     examples = []
+    pick_rng = np.random.default_rng(SEED + 4)  # a seeded draw per kind, so examples come from any month
     for label, mask in kinds.items():
-        i = int(np.nonzero(mask & multi0)[0][0])
+        i = int(pick_rng.choice(np.nonzero(mask & multi0)[0]))
         examples.append({"kind": label, "order_id": int(w.order_id[sim0.first_order + i]), "split": bool(y0[i]), "rule": bool(r0[i]),
                          "gbm": float(p_gbm0[i]), "features": {n: (None if pd.isna(v) else float(v)) for n, v in X0.iloc[i].items()}})
     sl3 = w.year_lines(3)
@@ -684,6 +709,7 @@ def main(world_dir: str, models_dir: str, out_dir: str) -> None:
         "shap": shap,
         "sku_risk": sku_summary,
         "business": {"candidates": candidates, "estimate_error": estimate_error, "decisions": decisions,
+                     "mae_difference_intervals": business_intervals, "dollars": "each candidate's error in orders times its own simulated extra parcel cost per split order",
                      "extra_parcel_cost_per_split": extra_per_split},
         "labels": METHOD_LABELS,
         "runtime_s": round(time.time() - t0, 1),

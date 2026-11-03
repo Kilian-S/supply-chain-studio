@@ -34,6 +34,7 @@ YEAR = 365
 RULES = ["best_sellers", "clusters", "communities", "categories", "random"]
 SHARES = [0.2, 0.4, 0.6, 0.8]
 SERVICES = [0.90, 0.95, 0.98]
+ROUTE_CLASSES = 2  # in-stock bookkeeping for the replay: first choices apart from later choices
 COVER_CAP = 20.0  # cover above this many lead-time-plus-review demands counts as this many
 
 
@@ -245,8 +246,9 @@ class Outcome:
     cost: np.ndarray
     cost_one: np.ndarray  # one parcel of the whole order from its home FC
     lost_lines: np.ndarray
-    attempts: np.ndarray  # (FC, SKU, month) lines that reached the FC with the SKU listed
-    fills: np.ndarray  # (FC, SKU, month) of those, lines filled
+    attempts: np.ndarray  # (FC, SKU, route class, month) lines that reached the FC with the SKU listed,
+    # route class 0 as their first choice, 1 as a later choice (after an earlier FC ran out that day)
+    fills: np.ndarray  # (FC, SKU, route class, month) of those, lines filled
 
 
 def simulate(w: World, p: Plan, year: int, seed: int = 0, unlimited: bool = False) -> Outcome:
@@ -267,8 +269,8 @@ def simulate(w: World, p: Plan, year: int, seed: int = 0, unlimited: bool = Fals
     listed = p.listed.ravel()
     ship = np.full(len(s), -2)
     month = month_of_doy(np.arange(YEAR))
-    attempts = np.zeros((n_fc * w.n_sku, 12))
-    fills = np.zeros((n_fc * w.n_sku, 12))
+    attempts = np.zeros((n_fc * w.n_sku, ROUTE_CLASSES, 12))
+    fills = np.zeros((n_fc * w.n_sku, ROUTE_CLASSES, 12))
     for t in range(YEAR):
         on_hand += pipe[t % ps.LEAD]
         pipe[t % ps.LEAD] = 0
@@ -291,8 +293,9 @@ def simulate(w: World, p: Plan, year: int, seed: int = 0, unlimited: bool = Fals
             within = cs - np.maximum.accumulate(np.where(new, cs - qq, 0))
             ok = within <= on_hand[kk]
             ship[ii[ok]] = kk[ok] // w.n_sku
-            np.add.at(attempts[:, month[t]], kk, 1)
-            np.add.at(fills[:, month[t]], kk[ok], 1)
+            c = min(k, ROUTE_CLASSES - 1)
+            np.add.at(attempts[:, c, month[t]], kk, 1)
+            np.add.at(fills[:, c, month[t]], kk[ok], 1)
             if not unlimited:
                 np.subtract.at(on_hand, kk[ok], qq[ok])
         ship[idx[ship[idx] == -2]] = -1
@@ -302,7 +305,8 @@ def simulate(w: World, p: Plan, year: int, seed: int = 0, unlimited: bool = Fals
     back = np.empty_like(seq)
     back[seq] = np.arange(len(seq))
     ship = ship[back]  # in the World's line order again
-    return outcome(w, p, year, ship, attempts.reshape(n_fc, w.n_sku, 12), fills.reshape(n_fc, w.n_sku, 12))
+    shape = (n_fc, w.n_sku, ROUTE_CLASSES, 12)
+    return outcome(w, p, year, ship, attempts.reshape(shape), fills.reshape(shape))
 
 
 def outcome(w: World, p: Plan, year: int, ship: np.ndarray, attempts: np.ndarray, fills: np.ndarray) -> Outcome:
