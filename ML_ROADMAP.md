@@ -218,16 +218,22 @@ questions fast, H flags risk, O decides, and the simulator checks the decision.
   (last year through the planned network, SKUs stocking out independently), logistic regression and
   LightGBM on 40 features; calibration map (none, Platt, isotonic) and every setting chosen on validation
   by cross-fitted log loss. Gradient boosting chosen.
-- **Headline.** Test log loss 0.233 against 0.246 (logistic), 0.262 (replay) and 0.275 (rule), calibration
-  error 0.5%. The rule catches 56% of split orders; the misses are stock-outs, gathered in November. A
-  network's split rate is estimated within 0.7 points against 0.9 for the replay; no method changes the
-  choice of listing rule.
+- **Headline.** Test log loss 0.233 against 0.243 (replay), 0.245 (logistic) and 0.275 (rule), calibration
+  error 0.5%. The rule catches 56% of split orders; the misses are stock-outs, gathered in November. For a
+  network's split rate, gradient boosting (0.7 points), the replay (0.9) and logistic regression (0.9)
+  cannot be told apart, all far better than the rule (2.8); no method changes the choice of listing rule.
+- **Independent review** (`design/split-risk/review-truth-r1.md`, 3 November). No leakage found. The
+  replay's in-stock rates pooled first and later routing rounds; fixed in a second run after the test had
+  been scored (disclosed), which changed only replay results. Wording, intervals, noise floor and tests
+  corrected as listed in HANDOVER section 7.
 - **Kilian's decisions.**
   - 3 November. Explanation of the models from first principles asked for; every design choice agreed
     (PROPOSAL section 6a) and the build approved. The page (storyline, vocabulary, card) is not decided.
 - **Decided while working alone, for review** (HANDOVER sections 3, 7 and 8). The plain rule corrected to
-  "lists some but not all"; routing to any FC with stock; FCs serve first choices first within a day; the
-  business check in split rates, with dollars from one average extra parcel cost.
+  "lists some but not all"; routing to any FC with stock, with stock levels that do not plan for the
+  overflow; FCs serve first choices first within a day; two features added to the agreed set
+  (`n_listed_elsewhere`, the rule's flag) and the stock-risk features of centrally sourced SKUs cut to two;
+  the business check in split rates, with dollars from each network's own cost per split.
 
 ### O. Network design over 5 years (operations research)
 - Multi-period mixed-integer model: open or expand FCs and capacities by year, assign regions
