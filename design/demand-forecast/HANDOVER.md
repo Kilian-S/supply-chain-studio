@@ -236,8 +236,14 @@ uv run python -m scgame.ml.demand_forecast ../data/world_v1 ../data/models/deman
 
 The model module builds years 6 to 10 (`scgame.world.future`, about 10 s) and the 200 replications
 (`scgame.world.replicate`, about 13 minutes on 4 cores) when they are missing, then runs about 47 minutes
-(measured from a fresh clone, see the commit that adds this file). It pins linear algebra to one thread per
-process so the outputs reproduce. Steps can also be run alone.
+(2,835 s in run 3, `O.runtime_s`), so about an hour in all on 4 cores. It pins linear algebra to one thread
+per process, as in the committed run.
+
+**Not yet verified.** A rebuild from a fresh clone was started (generator 11 s, years 6 to 10 built) and
+stopped at Kilian's request during the replications; he checks it locally. That the rebuilt outputs equal
+the committed ones is therefore unconfirmed. LightGBM is deterministic (identical SHAP values across the
+three runs); the network depends on fixed seeds and single-threaded linear algebra. Steps can also be run
+alone.
 
 ```bash
 uv run python -m scgame.world.future ../data/world_v1
