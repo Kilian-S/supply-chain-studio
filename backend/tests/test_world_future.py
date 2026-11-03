@@ -15,8 +15,8 @@ WORLD = Path(__file__).resolve().parents[2] / "data" / "world_v1"
 # Content hashes of world v1 (seed 7) recorded on 2 November 2026, before the generator was refactored for
 # years 6 to 10. The clustering and Bought together pages rest on exactly these files.
 WORLD_V1_HASHES = {
-    "skus": 8926129787003889124,
-    "regions": 3320056879694109686,
+    "skus": 2182386095474902484,
+    "regions": 3571222299876388705,
     "customers": 3488399290198957917,
     "bundles": 3909404346419009422,
     "orders": 5720966384723560802,
@@ -25,6 +25,10 @@ WORLD_V1_HASHES = {
 
 
 def content_hash(df: pd.DataFrame) -> int:
+    # Floats rounded to 9 decimals: libm differs in the last bits between Linux and macOS.
+    df = df.copy()
+    for c in df.select_dtypes("float").columns:
+        df[c] = df[c].round(9)
     return int(pd.util.hash_pandas_object(df, index=False).sum() % (1 << 63))
 
 
