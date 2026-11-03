@@ -202,17 +202,32 @@ questions fast, H flags risk, O decides, and the simulator checks the decision.
 - Demo: "expand FC A or B?" answered instantly, then confirmed by a full simulation.
 - Open points: input encoding of a network; how many simulator runs we can afford.
 
-### H. Risk classification (supervised classification)
-- 3 November 2026. Proposal in `design/split-risk/PROPOSAL.md` (split orders caused by listing or
-  stock-outs, simulated networks, plain rule and replay simulation as baselines). Kilian agreed the
-  model design (PROPOSAL section 6a) the same day and asked for the build; the page is not yet decided.
-  The notes below are the original outline.
-- Target: whether an order is split across FCs (or a SKU stocks out) under a planned network.
-- Features: basket composition, customer region, SKU clusters from J, affinity groups from K,
-  listing pattern.
-- Model: gradient-boosted classifier, calibrated probabilities, precision and recall vs a simple
-  rule; feature importance.
-- Open points: which target is more convincing to an operations research team (split orders or stockouts).
+### H. Split orders (supervised classification)
+- Built 3 November 2026 (`backend/src/scgame/ml/split_sim.py` and `split_risk.py`, outputs in
+  `data/models/split-risk/`). No page yet. Proposal and agreed design `design/split-risk/PROPOSAL.md`
+  (section 6a), build and results `HANDOVER.md` in the same folder.
+- **Question.** Before a planner commits to a network (which FCs open, what each lists, at what service
+  level), how many of next year's orders will ship in more than one parcel, and which orders and SKUs?
+- **Labels.** An order-level simulation runs real orders through random networks (central FC plus 1 to 6
+  regional FCs, five listing rules including model J clusters and model K communities, four listing
+  shares, three service levels, model J's stocking policy). A split order ships from two or more FCs,
+  because a SKU is not listed at the home FC or is out of stock there.
+- **Split.** Training years 2 and 3 on 60 networks, validation year 4 on 20, test year 5 on 20 networks
+  with FC site sets never seen; no refit.
+- **Methods.** The plain rule (home FC lists some but not all of the order's SKUs), the replay simulation
+  (last year through the planned network, SKUs stocking out independently), logistic regression and
+  LightGBM on 40 features; calibration map (none, Platt, isotonic) and every setting chosen on validation
+  by cross-fitted log loss. Gradient boosting chosen.
+- **Headline.** Test log loss 0.233 against 0.246 (logistic), 0.262 (replay) and 0.275 (rule), calibration
+  error 0.5%. The rule catches 56% of split orders; the misses are stock-outs, gathered in November. A
+  network's split rate is estimated within 0.7 points against 0.9 for the replay; no method changes the
+  choice of listing rule.
+- **Kilian's decisions.**
+  - 3 November. Explanation of the models from first principles asked for; every design choice agreed
+    (PROPOSAL section 6a) and the build approved. The page (storyline, vocabulary, card) is not decided.
+- **Decided while working alone, for review** (HANDOVER sections 3, 7 and 8). The plain rule corrected to
+  "lists some but not all"; routing to any FC with stock; FCs serve first choices first within a day; the
+  business check in split rates, with dollars from one average extra parcel cost.
 
 ### O. Network design over 5 years (operations research)
 - Multi-period mixed-integer model: open or expand FCs and capacities by year, assign regions
