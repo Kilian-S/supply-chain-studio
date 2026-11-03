@@ -136,19 +136,54 @@ questions fast, H flags risk, O decides, and the simulator checks the decision.
   picking single SKUs there (coverage, not affinity, drove split orders).
 
 ### B. Long-range demand forecasting (supervised regression, neural network)
-- Agreed 2 November 2026; full proposal and model design in `design/demand-forecast/PROPOSAL.md`.
-- World extended to ten years for this model (years 1 to 5 unchanged; years 6 to 10 in separate
-  `*_future.parquet` files, with about 7 launches a year matched by delisting the slowest sellers, and
-  a growth ceiling).
-- Monthly units. Five years ahead at Total, Region, Category, Region × category; two years at SKU and
-  Region × SKU.
-- Methods are seasonal naive, ETS, LightGBM and a scikit-learn multilayer perceptron (the last two
-  global over 2,744 series), with mean forecasts, uncertainty from a joint error bootstrap (P10, P50, P90),
-  bottom-up or MinT reconciliation.
-- Fit on years 1 to 3, settings chosen on years 4 and 5, test on years 6 to 10 after a refit on years 1
-  to 5. Ground truth from 200 replications, check only.
-- The business check is a one-off regional capacity build for years 7 to 10, costs from the game's ratio,
-  full range of ratios shown.
+- Built 2 to 3 November 2026 (code in `backend/src/scgame/ml/demand_*.py` and `forecast_*.py`, world
+  years 6 to 10 in `backend/src/scgame/world/future.py`, ground truth in `replicate.py`, outputs in
+  `data/models/demand-forecast/`). No page yet. Proposal `design/demand-forecast/PROPOSAL.md`, results
+  `RESULTS.md`, build and rebuild `HANDOVER.md` in the same folder.
+- **Data.** Monthly units (a month is a twelfth of a 365-day year) at six levels, Total, Region, Category,
+  Region × category, SKU and Region × SKU (2,744 series in the validation fit). Bulk orders kept. The world
+  is extended to ten years for this model only; years 1 to 5 are unchanged byte for byte. Years 6 to 10
+  add about 7 launches a year, delist as many of the slowest sellers, and stop each growing SKU's growth at
+  an age between 4 and 7 years.
+- **Split.** Fit on years 1 to 3, every setting chosen on years 4 and 5 (forecast from month 36), refit on
+  years 1 to 5, test once on years 6 to 10 (forecast from month 60; upper levels five years ahead, SKU
+  levels two). This differs from the 1 to 3, 4, 5 split of the other pages, as agreed.
+- **Methods.** Seasonal naive; ETS (damped additive trend, additive season on log(1 + y), trend by AIC);
+  LightGBM and a scikit-learn multilayer perceptron, both global over all series and levels, reading one
+  scaled year and predicting the next, applied five times for five years. Mean forecasts; uncertainty from
+  1,000 sample paths built from each method's past one-year errors (level errors carried over the years,
+  month noise by calendar month, both centred), with one width factor for the upper levels and one for the
+  SKU levels; MinT (shrunk covariance) or bottom-up for the upper levels, middle-out for the SKU levels.
+- **Selection.** Hyperparameters by the WAPE of the mean forecast, widths, reconciliation and the method by
+  weighted quantile loss (P10, P50, P90), all on years 4 and 5 with equal weight per level and year. The
+  neural network was chosen.
+- **Ground truth.** 200 replications of years 4 to 10; noise floor and calibration; never used to choose.
+- **Business check.** One-off capacity per region for years 7 to 10, decided at the end of year 5, cost
+  ratio from the game (0.76 to 0.83), full range of ratios.
+- **Headline.** Good one and two years ahead (Total WAPE 2.4% and 4.1% against a noise floor of 1.9% and
+  1.3%); over-forecasts by 8 to 25% in years 8 to 10 because growth stops in years 6 to 10, where ETS
+  (damped) is best. The capacity plan from our forecast costs 15% more than the ground-truth plan, ETS 3%.
+- **Kilian's decisions.**
+  - 2 November. Forecast five years ahead, not one (so the world was extended to ten years); a
+    five-year forecast at Region and Category levels, two years at SKU levels.
+  - 2 November. The catalogue stays near 300 SKUs in years 6 to 10 (delisting matches launches).
+  - 2 November. All fourteen recommendations of the proposal agreed (horizon and card "Demand five years
+    out", world extension rules, monthly units, bulk orders kept, the four methods and `lightgbm`, joint
+    error bootstrap, bottom-up versus MinT, the protocol above, scaled pinball loss with equal weight per
+    level and year, 200 replications for checking only, the capacity check, the nine-screen storyline, the
+    vocabulary, the agent loop for the page).
+  - 2 November. The model design A1 to C7 agreed after a first-principles explanation (global model, scaled
+    target, one year in and out with recursion, equal weight per level, mean forecasts, LightGBM with both
+    squared error and Tweedie as settings, scikit-learn network rather than PyTorch, ensemble of five).
+  - 2 November. Phases 0 to 3 to be done without him, with an independent agent checking after phase 2.
+  - 3 November. Stop before the page; no frontend and no `card.json`; hand over to the local session.
+- **Decided while working alone, for review** (`RESULTS.md` section 9). Months since first sale capped at
+  24; network epochs chosen on validation instead of early stopping; network loss as a setting with the
+  learning rate fixed; repeated rows instead of weights; the uncertainty fixes after the independent review
+  (made after the first test run, disclosed).
+- **Open.** How to present the turn after year 2, which forecast feeds O, out-of-sample error samples for
+  the SKU bands (to be scored on a second, untouched future), the capacity wording (`RESULTS.md` section
+  10).
 
 ### C. New-region demand (supervised regression, cold start)
 - Training data: existing regions' demand against region features (population, income, distance

@@ -26,14 +26,14 @@ State on 2 November 2026, for a new session (local or cloud). Read `CLAUDE.md` f
 
 ## In progress
 
-- **Demand forecast (model B).** Proposal and model design agreed with Kilian on 2 November 2026
-  (`design/demand-forecast/PROPOSAL.md`). Phases 0 to 3 done: world years 6 to 10
-  (`scgame.world.future`), 200 ground-truth replications (`scgame.world.replicate`), the models and
-  runner (`scgame.ml.demand_forecast`, about 50 minutes), outputs in `data/models/demand-forecast/`, two
-  rounds of independent review, and the results report `design/demand-forecast/RESULTS.md`, which ends
-  with Kilian's open questions. The page (phase 4) waits for his answers. To rebuild the data, run the
-  generator, then `python -m scgame.world.future ../data/world_v1`, then
-  `python -m scgame.world.replicate ../data/world_v1 200 4` (about 13 minutes).
+- **Demand forecast (model B).** Model built, reviewed twice by an independent agent and committed with its
+  outputs (`data/models/demand-forecast/`). Stopped before the page at Kilian's request (3 November 2026);
+  no frontend and no `card.json`. The local session reviews the model and designs the page, starting from
+  `design/demand-forecast/HANDOVER.md` (inputs, method, settings, results with their output fields,
+  disclosures, limits, rebuild commands), then `RESULTS.md` (results and Kilian's open questions) and
+  `PROPOSAL.md` (agreed design, storyline draft, vocabulary). Rebuild with the generator, then
+  `uv run python -m scgame.ml.demand_forecast ../data/world_v1 ../data/models/demand-forecast` (about an
+  hour; it builds years 6 to 10 and the ground truth first).
 
 ## Next
 
