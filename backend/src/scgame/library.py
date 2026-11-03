@@ -10,8 +10,20 @@ import sys
 from pathlib import Path
 
 from .scenario import (
-    Economics, Event, LaneTerms, LaneTier, RecordedDemand, Region, RegionMap, RouteSettings, Rules, Scenario,
-    StartFactory, StartRoute, StartState, StartWarehouse,
+    Economics,
+    Event,
+    LaneTerms,
+    LaneTier,
+    RecordedDemand,
+    Region,
+    RegionMap,
+    RouteSettings,
+    Rules,
+    Scenario,
+    StartFactory,
+    StartRoute,
+    StartState,
+    StartWarehouse,
 )
 
 CALOPEIA, SORANGE, TYRAN, ENTWORPE, FARDO = 1, 2, 3, 4, 5

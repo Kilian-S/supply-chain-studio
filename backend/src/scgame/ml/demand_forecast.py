@@ -4,12 +4,23 @@ Fit on years 1 to 3 (months 1 to 36); every setting is chosen on years 4 and 5 (
 from month 36). The chosen settings are refitted on years 1 to 5 and years 6 to 10 are forecast once from
 month 60 (upper levels five years ahead, SKU levels two). Years 6 to 10 are read only by the test step.
 The ground truth (200 replications, `scgame.world.replicate`) checks the forecasts and is never used to
-choose. Design and decisions in `design/demand-forecast/PROPOSAL.md`.
+choose. Design and decisions in `design/demand-forecast/PROPOSAL.md`, the build in
+`design/demand-forecast/HANDOVER.md`.
 
 Usage: uv run python -m scgame.ml.demand_forecast <world dir> <out dir>
+Needs world v1 years 1 to 5 (`scgame.world.generator`, seed 7). Years 6 to 10 (`scgame.world.future`) and
+the 200 ground-truth replications (`scgame.world.replicate`, about 13 minutes) are built first if missing.
+The whole run takes about 50 minutes on 4 cores.
 """
 
 from __future__ import annotations
+
+import os
+
+# One thread per process for the linear algebra, as in the committed run: the network trains five copies in
+# parallel processes, and fixed thread counts keep floating-point sums, and so the outputs, reproducible.
+for _var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"):
+    os.environ.setdefault(_var, "1")
 
 import json
 import sys
@@ -480,9 +491,27 @@ def series_payload(ser_v, ser_t, val, test, truth_v, truth_t, chosen) -> dict:
     return out
 
 
+def ensure_world(world_dir: str | Path, log=print) -> None:
+    """Build years 6 to 10 and the ground-truth replications if they are missing."""
+    from scgame.world.future import generate_future
+    from scgame.world.replicate import replicate
+
+    world = Path(world_dir)
+    if not (world / "bulk_buyers.parquet").exists():
+        raise FileNotFoundError(f"{world} lacks bulk_buyers.parquet; run `python -m scgame.world.generator {world} 7` first")
+    if not (world / "skus_future.parquet").exists():
+        log("building years 6 to 10")
+        generate_future(world)
+    if not (world / "truth_replications.npz").exists():
+        log("building 200 ground-truth replications (about 13 minutes)")
+        replicate(world, 200, 4)
+
+
 def main(world_dir: str, out_dir: str) -> None:
     warnings.filterwarnings("ignore")
-    run(world_dir, out_dir, log=lambda s: print(s, flush=True))
+    log = lambda s: print(s, flush=True)
+    ensure_world(world_dir, log)
+    run(world_dir, out_dir, log=log)
 
 
 if __name__ == "__main__":
