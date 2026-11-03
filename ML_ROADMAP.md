@@ -186,6 +186,8 @@ questions fast, H flags risk, O decides, and the simulator checks the decision.
   10).
 
 ### C. New-region demand (supervised regression, cold start)
+- Proposal written 3 November 2026 (`design/new-region-demand/PROPOSAL.md`), waiting for Kilian's
+  decisions. Nothing built yet. The notes below are the original outline.
 - Training data: existing regions' demand against region features (population, income, distance
   to the nearest FC, urbanisation, category affinities).
 - Models: regularised linear regression as a readable baseline, then gradient boosting; leave-one-
