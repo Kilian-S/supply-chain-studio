@@ -39,6 +39,12 @@ model would add nothing. The prototype shows that it does run out.
 | 1 regional FC, 20% of SKUs, 90% service | 14.0% | 17.6% | 4.3% |
 | 6 regional FCs, 40% of SKUs each, 95% service | 21.6% | 23.8% | 6.9% |
 
+Correction found while building (3 November 2026). This table used a weaker plain rule ("any SKU not
+listed at the home FC"), which wrongly flags orders with no SKU listed at home (they ship whole from the
+central FC). The rule as built is "the home FC lists some but not all of the order's SKUs", exact when
+stock never runs out. The prototype also routed differently. The built model's figures are in
+`HANDOVER.md`.
+
 So the rule is right on about 95% of multi-SKU orders, but on the second network it catches only 72% of
 the split orders and only 71% of its flags are real. A classifier is worth what it adds over that rule,
 and the page will say how much that is.
