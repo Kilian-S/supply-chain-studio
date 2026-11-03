@@ -14,7 +14,8 @@ Bulk buyers of the lumpy SKUs keep buying (same customers, same mean gaps); new 
 A bundle partner is drawn only among members on sale that day. Everything uses a random stream separate
 from years 1 to 5.
 
-Usage: uv run python -m scgame.world.future <world dir>
+Usage: uv run python -m scgame.world.future <world dir> [stream] [out dir]
+(the first future is stream 6 in the world directory; the second is stream 16 in <world dir>/future2)
 """
 
 from __future__ import annotations
@@ -146,11 +147,15 @@ def simulate_years_6_to_10(w: dict, cat: pd.DataFrame, rng: np.random.Generator,
     return order_rows, line_rows
 
 
-def generate_future(world_dir: str | Path) -> dict:
+def generate_future(world_dir: str | Path, stream: int = 6, out_dir: str | Path | None = None) -> dict:
+    """Years 6 to 10 from random stream [seed, stream], written to `out_dir` (default the world directory).
+    The first future uses stream 6; a second draw under the same rules uses another stream."""
     world = Path(world_dir)
+    out = Path(out_dir) if out_dir is not None else world
+    out.mkdir(parents=True, exist_ok=True)
     w = load_world(world)
     p = w["params"]
-    rng = np.random.default_rng([p.seed, 6])
+    rng = np.random.default_rng([p.seed, stream])
     cat, events = future_catalogue(w["skus"], rng, p.demand_scale)
     record: list[dict] = []
     first = int(w["orders"]["order_id"].max()) + 1
@@ -162,27 +167,29 @@ def generate_future(world_dir: str | Path) -> dict:
         for c in df.columns:
             df[c] = df[c].astype("int32")
     out_cat = cat.drop(columns=["category_id"])
-    out_cat.to_parquet(world / "skus_future.parquet", index=False)
-    pd.DataFrame(record).to_parquet(world / "bulk_buyers_future.parquet", index=False)
-    orders.to_parquet(world / "orders_future.parquet", index=False)
-    lines.to_parquet(world / "order_lines_future.parquet", index=False)
+    out_cat.to_parquet(out / "skus_future.parquet", index=False)
+    pd.DataFrame(record).to_parquet(out / "bulk_buyers_future.parquet", index=False)
+    orders.to_parquet(out / "orders_future.parquet", index=False)
+    lines.to_parquet(out / "order_lines_future.parquet", index=False)
 
     meta = {
         "version": 1,
         "first_day": DAYS + 1,
         "last_day": END_DAY,
         "rules": {"launches_per_year": LAUNCHES_PER_YEAR, "growth_stop_years": list(GROWTH_STOP_YEARS),
-                  "bulk_units_per_year_for_delisting": BULK_UNITS_PER_YEAR, "random_stream": [p.seed, 6]},
+                  "bulk_units_per_year_for_delisting": BULK_UNITS_PER_YEAR, "random_stream": [p.seed, stream]},
         "launches": events["launches"],
         "delisted": events["delisted"],
         "on_sale_at_year_start": {y: on_sale(cat, year_start(y)) for y in range(1, YEARS + 1)},
         "counts": {"skus_total": len(cat), "new_skus": int(cat["new"].sum()), "orders": len(orders), "order_lines": len(lines)},
     }
-    (world / "world_future.json").write_text(json.dumps(meta, indent=2, default=int) + "\n")
+    (out / "world_future.json").write_text(json.dumps(meta, indent=2, default=int) + "\n")
     return meta
 
 
 if __name__ == "__main__":
     target = sys.argv[1] if len(sys.argv) > 1 else "data/world_v1"
-    m = generate_future(target)
+    stream = int(sys.argv[2]) if len(sys.argv) > 2 else 6
+    out_dir = sys.argv[3] if len(sys.argv) > 3 else None
+    m = generate_future(target, stream, out_dir)
     print(json.dumps({k: m[k] for k in ("launches", "on_sale_at_year_start", "counts")}, indent=2))

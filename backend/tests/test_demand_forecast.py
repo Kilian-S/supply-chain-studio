@@ -99,26 +99,61 @@ def test_middle_out_children_sum_to_their_parent():
 
 
 def test_paths_carry_level_errors_over_the_years():
-    blocks = fu.ErrorBlocks(level=np.array([[0.1], [0.1]]), noise=np.zeros((2, 1, 12)))
-    draws = np.zeros((1, 3), dtype=int)
+    blocks = fu.ErrorBlocks(level=np.array([[0.1], [0.1]]), noise=[np.zeros((1, 1)) for _ in range(12)])
+    draws = {"level": np.zeros((1, 3), dtype=int), "noise": np.zeros((1, 3, 12), dtype=int)}
     p = fu.sample_paths(np.full((1, 36), 99.0), blocks, draws, k=1.0, origin=36)
     assert np.allclose(p[0, 0, 0], 100 * np.exp(0.1) - 1)
     assert np.allclose(p[0, 0, 24], 100 * np.exp(0.3) - 1)
 
 
-def test_error_blocks_are_centred_and_noise_follows_the_calendar():
+def test_error_blocks_use_partial_years_centre_and_follow_the_calendar():
+    # Origins 24, 25 and 33 inside a 36-month window: 12, 11 and 3 months observed.
     actual = np.ones((1, 3, 12)) * 9
-    actual[0, 0, 0] = 19  # a high first month at origin 13 (month 14, a February)
-    actual[0, 2, 0] = 19  # and at origin 25
+    actual[0, 0, 1] = 19  # origin 24: month 26, a February, runs high
+    actual[0, 1, 0] = 19  # origin 25: month 26 again
     forecast = np.ones((1, 3, 12)) * 9
-    forecast[0, 1] = 4  # the second origin's year runs 1.0 above in log terms
-    b = fu.error_blocks(actual, forecast, origins=[13, 24, 25])
-    assert np.allclose(b.level.sum(axis=0), 0)  # centred over origins
-    assert np.allclose(b.noise.sum(axis=0), 0)  # each calendar month centred over origins
-    assert b.noise[0, 0].argmax() == 1  # stored as February
-    draws = np.zeros((1, 1), dtype=int)
+    forecast[0, 2] = 4  # origin 33's three months run high, but too few months for a level error
+    b = fu.error_blocks(actual, forecast, origins=[24, 25, 33], observed=[12, 11, 3])
+    assert b.level.shape == (2, 1)  # only origins with at least MIN_LEVEL_MONTHS observed months
+    assert np.allclose(b.level.sum(axis=0), 0)
+    assert all(np.allclose(c.sum(axis=0), 0) for c in b.noise)
+    assert len(b.noise[0]) == 1 and len(b.noise[1]) == 2  # January from origin 24 only; February from both
+    assert b.noise[1][:, 0].max() > b.noise[2][:, 0].max()  # the high February noise is stored as February
+    draws = {"level": np.zeros((1, 1), dtype=int), "noise": np.zeros((1, 1, 12), dtype=int)}
     p = fu.sample_paths(np.full((1, 12), 9.0), b, draws, k=1.0, origin=36)  # month 37 is a January
     assert p[0, 0].argmax() == 1
+
+
+class _Series:  # the parts of a Series the seasonal-naive refits read
+    def __init__(self, y):
+        self.y = y
+
+
+def test_rolling_error_forecasts_read_nothing_after_their_origin_or_the_window():
+    y = seasonal(n_series=2, months=60)
+    f = df.Fitted("Seasonal naive", _Series(y), 36)
+    origins, observed, actual, fc = df.rolling_errors(f, None)
+    assert origins[0] == df.FIRST_REFIT and origins[-1] == 35
+    assert observed[0] == 12 and observed[-1] == 1
+    y2 = y.copy()
+    y2[:, 36:] = np.nan  # months after the fitting window
+    o2, _, a2, f2 = df.rolling_errors(df.Fitted("Seasonal naive", _Series(y2), 36), None)
+    assert np.array_equal(fc, f2, equal_nan=True) and np.array_equal(actual, a2, equal_nan=True)
+    assert np.isnan(actual[:, -1, 1:]).all() and np.isfinite(actual[:, -1, 0]).all()
+    assert np.allclose(fc[:, 0], y[:, 12:24])  # seasonal naive from month 24 repeats months 13..24
+
+
+def test_ets_runs_on_with_fixed_parameters_from_a_later_origin():
+    y = seasonal(n_series=1, months=48)
+    fits = fb.fit_ets(y, 36, workers=1)
+    ext = fb.ets_extend(fits, y, 42, workers=1)
+    assert np.allclose(ext[0]["level"][:36], fits[0]["level"])  # same states over the fitting window
+    assert len(ext[0]["level"]) == 42
+    f42, used = fb.ets_forecast(ext, y, 42, 12)
+    assert used[0] and np.isfinite(f42).all()
+    y_cut = y.copy()
+    y_cut[:, 42:] = 1e9  # nothing after the origin may matter
+    assert np.allclose(fb.ets_forecast(fb.ets_extend(fits, y_cut, 42, workers=1), y_cut, 42, 12)[0], f42)
 
 
 def test_weighted_quantile_loss_equals_wape_when_quantiles_coincide():
@@ -159,6 +194,11 @@ def test_outputs():
         assert best["width_lower"] == min(val[n]["grid_lower"], key=lambda g: g["score"])["width"]
         assert len(o["test"][n]["table"]["Total"]) == 5 and len(o["test"][n]["table"]["SKU"]) == 2
     assert o["facts"]["replications"] == 200
+    assert o["error_samples"]["first_refit"] == df.FIRST_REFIT
+    for n in df.METHODS:
+        assert o["validation"][n]["error_origins"]["origins"][0] == df.FIRST_REFIT
+        assert len(o["second_future"]["test"][n]["table"]["Total"]) == 5
+    assert o["second_future"]["world"]["rules"]["random_stream"][1] == df.SECOND_FUTURE_STREAM
     gt = o["capacity"]["curves"]["Ground truth"]["expected"]
     for plan, c in o["capacity"]["curves"].items():
         assert len(c["expected"]) == len(o["capacity"]["rho"])

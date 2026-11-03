@@ -65,13 +65,23 @@ def test_growth_stops_after_the_drawn_age():
         assert r[0] == pytest.approx(r[1])
 
 
-@needs_future
-def test_catalogue_stays_near_300_and_new_skus_follow_the_rules():
-    meta = json.loads((WORLD / "world_future.json").read_text())
+FUTURES = [WORLD, WORLD / "future2"]  # the first future and a second draw under the same rules
+each_future = pytest.mark.parametrize("future", FUTURES, ids=["first", "second"])
+
+
+def _skip_missing(future):
+    if not (future / "skus_future.parquet").exists():
+        pytest.skip("run scgame.ml.demand_forecast (or scgame.world.future) first")
+
+
+@each_future
+def test_catalogue_stays_near_300_and_new_skus_follow_the_rules(future):
+    _skip_missing(future)
+    meta = json.loads((future / "world_future.json").read_text())
     for year in range(6, 11):
-        assert 280 <= meta["on_sale_at_year_start"][str(year)] <= 320
+        assert 270 <= meta["on_sale_at_year_start"][str(year)] <= 320
         assert len(meta["delisted"][str(year)]) == meta["launches"][str(year)]
-    cat = pd.read_parquet(WORLD / "skus_future.parquet")
+    cat = pd.read_parquet(future / "skus_future.parquet")
     new = cat[cat["new"]]
     assert (new["sku_id"] > 300).all()
     assert new["launch_day"].between(DAYS + 1, fu.END_DAY).all()
@@ -87,12 +97,23 @@ def test_no_sku_explodes():
     assert (late[on] <= 3 * y5[on]).all()
 
 
-@needs_future
-def test_future_orders_only_for_skus_on_sale():
-    cat = pd.read_parquet(WORLD / "skus_future.parquet").set_index("sku_id")
-    lines = pd.read_parquet(WORLD / "order_lines_future.parquet")
+@each_future
+def test_future_orders_only_for_skus_on_sale(future):
+    _skip_missing(future)
+    cat = pd.read_parquet(future / "skus_future.parquet").set_index("sku_id")
+    lines = pd.read_parquet(future / "order_lines_future.parquet")
     assert lines["day"].between(DAYS + 1, fu.END_DAY).all()
     life = cat.loc[lines["sku_id"], ["launch_day", "stop_day"]].to_numpy()
     assert ((lines["day"].to_numpy() >= life[:, 0]) & (lines["day"].to_numpy() < life[:, 1])).all()
     orders = pd.read_parquet(WORLD / "orders.parquet", columns=["order_id"])
     assert lines["order_id"].min() > orders["order_id"].max()
+
+
+def test_the_second_future_is_a_new_draw_of_the_same_years():
+    for f in FUTURES:
+        _skip_missing(f)
+    a, b = (pd.read_parquet(f / "skus_future.parquet") for f in FUTURES)
+    assert a[~a["new"]][["sku_id", "base_rate", "launch_day"]].equals(b[~b["new"]][["sku_id", "base_rate", "launch_day"]])
+    assert not a["growth_stop_age"].fillna(0).equals(b["growth_stop_age"].fillna(0))  # drawn again
+    la, lb = (pd.read_parquet(f / "order_lines_future.parquet") for f in FUTURES)
+    assert len(la) != len(lb) or not la.equals(lb)

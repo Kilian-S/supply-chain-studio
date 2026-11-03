@@ -6,10 +6,11 @@ their mean reorder gaps) and redraws every order with a fresh random stream. The
 replications is the true uncertainty of demand; their mean is the true expected demand. Used to check
 the forecast, never to choose it.
 
-Output: `truth_replications.npz` in the world directory, units per replication, region, SKU and month
+Output: `truth_replications.npz` next to the future it replicates, units per replication, region, SKU and month
 for months 37 to 120 (years 4 to 10).
 
-Usage: uv run python -m scgame.world.replicate <world dir> [replications] [workers]
+Usage: uv run python -m scgame.world.replicate <world dir> [replications] [workers] [future dir] [stream]
+(the first future's replications use stream 7; the second future's, in <world dir>/future2, stream 17)
 """
 
 from __future__ import annotations
@@ -45,19 +46,21 @@ def month_of_day(day: np.ndarray) -> np.ndarray:
 _W: dict = {}
 
 
-def _init(world_dir: str) -> None:
+def _init(world_dir: str, future_dir: str, stream: int) -> None:
     world = Path(world_dir)
     w = load_world(world)
-    cat = pd.read_parquet(world / "skus_future.parquet")
+    future = Path(future_dir)
+    cat = pd.read_parquet(future / "skus_future.parquet")
     cat["category_id"] = cat["category"].map({c.name: i for i, c in enumerate(CATEGORIES)})
     w["cat"] = cat
-    w["buyers_future"] = pd.read_parquet(world / "bulk_buyers_future.parquet")
+    w["buyers_future"] = pd.read_parquet(future / "bulk_buyers_future.parquet")
+    w["stream"] = stream
     _W.update(w)
 
 
 def one_replication(r: int) -> np.ndarray:
     w, cat, p = _W, _W["cat"], _W["params"]
-    rng = np.random.default_rng([p.seed, 7, r])
+    rng = np.random.default_rng([p.seed, w["stream"], r])
     order_rows: list[np.ndarray] = []
     line_rows: list[np.ndarray] = []
     # Years 4 and 5 under the world v1 rules.
@@ -83,12 +86,15 @@ def one_replication(r: int) -> np.ndarray:
     return cube
 
 
-def replicate(world_dir: str | Path, reps: int = 200, workers: int = 4) -> Path:
+def replicate(world_dir: str | Path, reps: int = 200, workers: int = 4, future_dir: str | Path | None = None, stream: int = 7) -> Path:
+    """Replications of years 4 to 10 for the future in `future_dir` (default the world directory, the first
+    future), random streams [seed, stream, r]; written next to that future."""
     world = Path(world_dir)
-    with Pool(workers, initializer=_init, initargs=(str(world),)) as pool:
+    future = Path(future_dir) if future_dir is not None else world
+    with Pool(workers, initializer=_init, initargs=(str(world), str(future), stream)) as pool:
         cubes = pool.map(one_replication, range(reps))
-    cat = pd.read_parquet(world / "skus_future.parquet")
-    out = world / "truth_replications.npz"
+    cat = pd.read_parquet(future / "skus_future.parquet")
+    out = future / "truth_replications.npz"
     np.savez_compressed(out, units=np.stack(cubes), sku_id=cat["sku_id"].to_numpy(),
                         region_id=np.arange(1, cubes[0].shape[0] + 1), months=np.arange(FIRST_MONTH, MONTHS + 1))
     return out
@@ -98,4 +104,6 @@ if __name__ == "__main__":
     target = sys.argv[1] if len(sys.argv) > 1 else "data/world_v1"
     reps = int(sys.argv[2]) if len(sys.argv) > 2 else 200
     workers = int(sys.argv[3]) if len(sys.argv) > 3 else 4
-    print(replicate(target, reps, workers))
+    future_dir = sys.argv[4] if len(sys.argv) > 4 else None
+    stream = int(sys.argv[5]) if len(sys.argv) > 5 else 7
+    print(replicate(target, reps, workers, future_dir, stream))

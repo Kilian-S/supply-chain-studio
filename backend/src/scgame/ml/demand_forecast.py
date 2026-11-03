@@ -5,7 +5,8 @@ from month 36). The chosen settings are refitted on years 1 to 5 and years 6 to 
 month 60 (upper levels five years ahead, SKU levels two). Years 6 to 10 are read only by the test step.
 The ground truth (200 replications, `scgame.world.replicate`) checks the forecasts and is never used to
 choose. Design and decisions in `design/demand-forecast/PROPOSAL.md`, the build in
-`design/demand-forecast/HANDOVER.md`.
+`design/demand-forecast/HANDOVER.md`. Years 6 to 10 are also drawn a second time (another seed, same rules)
+and the same forecasts are scored on them once.
 
 Usage: uv run python -m scgame.ml.demand_forecast <world dir> <out dir>
 Needs world v1 years 1 to 5 (`scgame.world.generator`, seed 7). Years 6 to 10 (`scgame.world.future`) and
@@ -21,8 +22,9 @@ import os
 # parallel processes, and fixed thread counts keep floating-point sums, and so the outputs, reproducible.
 for _var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"):
     os.environ.setdefault(_var, "1")
-# The imports below must follow the thread settings above, hence E402.
-# ruff: noqa: E402
+# The imports below must follow the thread settings above, hence E402 (RUF100: newer ruff versions do not
+# enable E402 by default and would call the directive unused).
+# ruff: noqa: E402, RUF100
 
 import json
 import sys
@@ -47,6 +49,10 @@ N_PATHS = 1000
 WIDTHS_UPPER = (0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0)
 WIDTHS_LOWER = (0.25, 0.35, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0)
 UPPER_RECS = ("Bottom-up", "MinT")
+# A second draw of years 6 to 10 under the same rules (scored once, after the first test years had been seen).
+SECOND_FUTURE = "future2"
+SECOND_FUTURE_STREAM = 16  # random stream [seed, 16]; the first future uses [seed, 6]
+SECOND_REPLICATION_STREAM = 17  # replications [seed, 17, r]; the first future's use [seed, 7, r]
 METHODS = ["Seasonal naive", "ETS", "LightGBM", "Neural network"]
 GAME_CAPACITY_SHARE = 50_000 / (365 / 12) / 5 / 1_450  # yearly cost of a unit of monthly capacity, share of unit price
 RHO = np.round(np.geomspace(0.1, 10, 41), 4)  # capacity cost per unit of monthly capacity per year / lost margin per unit
@@ -74,14 +80,16 @@ class Fitted:
         self.fallback = int(fallback.sum())
         return out
 
-    def past_year(self, origins: list[int]) -> np.ndarray:
-        """One-year-ahead forecasts at origins inside the fitting window (series, origin, 12)."""
+    def year_from(self, origin: int) -> np.ndarray:
+        """Mean forecasts of the twelve months after `origin` (series, 12), reading months up to it only.
+        The origin may lie after `fit_end`: the model keeps the parameters it learned on months 1..fit_end."""
         y = self.ser.y
         if self.name == "Seasonal naive":
-            return np.stack([fb.seasonal_naive(y, T, 12) for T in origins], axis=1)
+            return fb.seasonal_naive(y, origin, 12)
         if self.name == "ETS":
-            return np.stack([fb.ets_forecast(self.ets, y, T, 12)[0] for T in origins], axis=1)
-        return fm.in_sample_year(self.model, y, self.ser.bulk, origins)
+            fits = self.ets if origin == self.fit_end else fb.ets_extend(self.ets, y, origin)
+            return fb.ets_forecast(fits, y, origin, 12)[0]
+        return fm.one_year_forecasts(self.model, y, self.ser.bulk, [origin])[:, 0]
 
 
 def level_rows(ser: ds.Series) -> dict[str, np.ndarray]:
@@ -124,7 +132,7 @@ def tune(name: str, ser: ds.Series, static: pd.DataFrame, fit_end: int, log) -> 
             log(f"  LightGBM {setting} best so far {best[0]:.4f}")
     else:
         for setting in fm.MLP_GRID:
-            for epochs, model in fm.fit_mlp(ser.y, ser.bulk, ser.meta, static, fit_end, setting).items():
+            for epochs, model in fm.fit_mlp(ser.y, ser.bulk, ser.meta, static, fit_end, setting, epochs=fm.MLP_EPOCHS).items():
                 f = Fitted(name, ser, fit_end, model=model)
                 sc = point_score(ser, f.forecast(VAL_YEARS), fit_end, VAL_YEARS)
                 trials.append({"setting": dict(setting, epochs=epochs), "score": sc})
@@ -146,7 +154,32 @@ def refit(f: Fitted, ser: ds.Series, static: pd.DataFrame, fit_end: int) -> Fitt
         booster = fm.fit_lgb(ser.y, ser.bulk, ser.meta, static, fit_end, s)
         return Fitted(f.name, ser, fit_end, model=fm.LgbModel(booster, trees, static, dict(s, trees=trees)))
     epochs = s.pop("epochs")
-    return Fitted(f.name, ser, fit_end, model=fm.fit_mlp(ser.y, ser.bulk, ser.meta, static, fit_end, s)[epochs])
+    return Fitted(f.name, ser, fit_end, model=fm.fit_mlp(ser.y, ser.bulk, ser.meta, static, fit_end, s, epochs=(epochs,))[epochs])
+
+
+# Out-of-sample error samples: the method is refitted every REFIT_EVERY months from FIRST_REFIT on, and each
+# refit forecasts one year from its own month and the following ones, up to the end of the fitting window.
+FIRST_REFIT = 24  # the learned models need a year in and a year out before their first training window
+REFIT_EVERY = 3
+
+
+def rolling_errors(f: Fitted, static: pd.DataFrame, log=None) -> tuple[list[int], list[int], np.ndarray, np.ndarray]:
+    """Origins, months observed per origin, actual and forecast (series, origin, 12) from rolling-origin
+    refits on months 1..origin. Months after the fitting window are left as NaN in `actual`."""
+    ser, F = f.ser, f.fit_end
+    origins = list(range(FIRST_REFIT, F))
+    fc = np.full((len(ser.y), len(origins), 12), np.nan)
+    for T_r in range(FIRST_REFIT, F, REFIT_EVERY):
+        fr = refit(f, ser, static, T_r)
+        for o in range(T_r, min(T_r + REFIT_EVERY, F)):
+            fc[:, origins.index(o)] = fr.year_from(o)
+        if log:
+            log(f"    {f.name} refit at month {T_r}")
+    observed = [min(12, F - o) for o in origins]
+    actual = np.full_like(fc, np.nan)
+    for j, (o, m) in enumerate(zip(origins, observed)):
+        actual[:, j, :m] = ser.y[:, o:o + m]
+    return origins, observed, actual, fc
 
 
 # ---------------------------------------------------------------- paths, reconciliation, scores
@@ -155,30 +188,31 @@ def refit(f: Fitted, ser: ds.Series, static: pd.DataFrame, fit_end: int) -> Fitt
 class Probabilistic:
     """Mean forecasts, error blocks and the coherent sample paths of one fitted method."""
 
-    def __init__(self, f: Fitted, years: int, seed: int):
+    def __init__(self, f: Fitted, years: int, seed: int, static: pd.DataFrame, log=None):
         ser, T = f.ser, f.fit_end
         self.f, self.ser, self.T, self.years = f, ser, T, years
         self.mean = f.forecast(years)
-        origins = list(range(12, T - 12 + 1))
-        past = f.past_year(origins)
-        actual = np.stack([ser.y[:, o:o + 12] for o in origins], axis=1)
-        self.blocks = fu.error_blocks(actual, past, origins)
+        origins, observed, actual, past = rolling_errors(f, static, log)
+        self.origins, self.observed = origins, observed
+        self.blocks = fu.error_blocks(np.nan_to_num(actual), np.nan_to_num(past), origins, observed)
         up = ser.upper_idx
-        e_units = (actual[up] - past[up]).transpose(1, 2, 0).reshape(-1, len(up))
+        e = (actual[up] - past[up]).transpose(1, 2, 0).reshape(-1, len(up))  # (origin x month, series)
+        e_units = e[np.isfinite(e).all(axis=1)]
         bottom = np.searchsorted(up, ser.rc_idx)
         self.P = {"Bottom-up": fu.bottom_up_matrix(ser.S_upper, bottom), "MinT": fu.mint_matrix(ser.S_upper, fu.shrunk_covariance(e_units))}
-        self.draws = fu.draw_origins(len(origins), years, N_PATHS, np.random.default_rng(seed))
+        self.draws = fu.draw_origins(self.blocks, years, N_PATHS, np.random.default_rng(seed))
 
     def upper_paths(self, k: float, rec: str) -> np.ndarray:
         up = self.ser.upper_idx
-        return fu.reconcile(self.P[rec], fu.sample_paths(self.mean[up], _sub(self.blocks, up), self.draws, k, self.T))
+        return fu.reconcile(self.P[rec], fu.sample_paths(self.mean[up], fu.sub_blocks(self.blocks, up), self.draws, k, self.T))
 
     def lower_paths(self, k: float, upper: np.ndarray) -> dict[str, np.ndarray]:
         """Region × SKU paths scaled to the reconciled Region × category paths (middle-out), and SKU paths as
         their sums, so every level adds up."""
         ser = self.ser
         Hs = 12 * min(self.years, SKU_YEARS)
-        pairs = fu.sample_paths(self.mean[ser.pair_idx, :Hs], _sub(self.blocks, ser.pair_idx), self.draws[:, :Hs // 12], k, self.T)
+        draws = {key: d[:, :Hs // 12] for key, d in self.draws.items()}
+        pairs = fu.sample_paths(self.mean[ser.pair_idx, :Hs], fu.sub_blocks(self.blocks, ser.pair_idx), draws, k, self.T)
         rc = upper[:, np.searchsorted(ser.upper_idx, ser.rc_idx), :Hs]
         pairs = fu.middle_out(pairs, ser.pair_parent, rc, len(ser.rc_idx))
         return {"pairs": pairs, "skus": fu.sum_to(pairs, ser.pair_sku, len(ser.sku_idx))}
@@ -198,10 +232,6 @@ class Probabilistic:
             out["SKU"] = fu.quantiles(paths["skus"])
             out["Region × SKU"] = fu.quantiles(paths["pairs"])
         return out
-
-
-def _sub(b: fu.ErrorBlocks, idx: np.ndarray) -> fu.ErrorBlocks:
-    return fu.ErrorBlocks(b.level[:, idx], b.noise[:, idx])
 
 
 def actual_by_level(ser: ds.Series) -> dict[str, np.ndarray]:
@@ -272,6 +302,82 @@ def capacity_cost(K: float, demand: np.ndarray, c: float, m: float) -> np.ndarra
 # ---------------------------------------------------------------- the run
 
 
+def truth_table(ser: ds.Series, tr: np.ndarray, T: int, yrs: dict[str, int], q: dict | None) -> dict:
+    """Per level and forecast year, the ground-truth mean as a forecast and, given our quantiles `q`, the
+    share of replications inside our P10 to P90 and the true band width over ours."""
+    tq = np.quantile(tr, fu.QUANTILES, axis=0)  # (3, series, months)
+    tmean = tr.mean(axis=0)
+    tab = {}
+    for lv, idx in level_rows(ser).items():
+        tab[lv] = []
+        for j in range(yrs[lv]):
+            m = slice(T + 12 * j - 36, T + 12 * (j + 1) - 36)  # truth months start at 37
+            a = ser.y[idx, T + 12 * j:T + 12 * (j + 1)]
+            cell = {"wape_truth_mean": fu.wape(a, tmean[idx, m]), "wql_truth": fu.scores(a, tq[:, idx, m])["wql"]}
+            if q is not None:
+                ours = q[lv][:, :, 12 * j:12 * (j + 1)]
+                inside = (tr[:, idx, m] >= ours[0][None]) & (tr[:, idx, m] <= ours[2][None])
+                cell["truth_inside_our_p10_p90"] = float(inside.mean())
+                cell["true_p10_p90_width_vs_ours"] = float((tq[2, idx, m] - tq[0, idx, m]).sum() / max((ours[2] - ours[0]).sum(), 1e-9))
+            tab[lv].append(cell)
+    return tab
+
+
+def capacity_check(ser_t: ds.Series, w: ds.World, truth_t: np.ndarray, test: dict, chosen: str) -> dict:
+    """Capacity per region for years 7 to 10 (forecast months 13 to 60 from month 60) under each plan, costed
+    on the realised years and on replications 100 to 199; the ground-truth plan uses replications 0 to 99."""
+    reg_rows_t = np.nonzero(ser_t.meta["level"].to_numpy() == "Region")[0]
+    reg_up = np.searchsorted(ser_t.upper_idx, reg_rows_t)
+    months = slice(TEST_FIT + 12, TEST_FIT + 60)  # months 73..120
+    fmonths = slice(12, 60)
+    actual = ser_t.y[reg_rows_t, months]  # (8, 48)
+    tr_reg = truth_t[:, reg_rows_t, 36:84]  # truth months 73..120
+    plan_reps, eval_reps = tr_reg[:100], tr_reg[100:]
+    sk = w.skus
+    price = sk["price"].to_numpy()
+    margin_unit = (sk["price"] * sk["margin"]).to_numpy()
+    hist = w.units[:, :, :TEST_FIT].sum(axis=2)  # (region, sku) units in years 1 to 5
+    p_r = (hist * price).sum(1) / hist.sum(1)
+    m_r = (hist * margin_unit).sum(1) / hist.sum(1)
+    rho_game = GAME_CAPACITY_SHARE * p_r / m_r
+    plans = {n: test[n]["paths"]["upper"][:, reg_up, fmonths] for n in METHODS}
+
+    def capacity(plan: str, r: int, rho: float) -> float:
+        if plan == "Our forecast":
+            return capacity_plan(plans[chosen][:, r], rho)
+        if plan == "Our P50 only":
+            return float(np.quantile(plans[chosen][:, r], 0.5, axis=0).max())
+        if plan == "Last year's peak":
+            return float(ser_t.y[reg_rows_t[r], TEST_FIT - 12:TEST_FIT].max())
+        if plan == "Ground truth":
+            return capacity_plan(plan_reps[:, r], rho)
+        return capacity_plan(plans[plan][:, r], rho)
+
+    curves = {}
+    for plan in ["Our forecast", "Our P50 only", "Seasonal naive", "Last year's peak", "Ground truth"] + [n for n in METHODS if n not in (chosen, "Seasonal naive")]:
+        realised, expected = [], []
+        for rho in RHO:
+            rr, ee = 0.0, 0.0
+            for r in range(len(reg_rows_t)):
+                K, c = capacity(plan, r, rho), rho * m_r[r]
+                rr += float(capacity_cost(K, actual[r][None], c, m_r[r])[0])
+                ee += float(capacity_cost(K, eval_reps[:, r], c, m_r[r]).mean())
+            realised.append(rr)
+            expected.append(ee)
+        curves[plan] = {"realised": realised, "expected": expected}
+    per_region = []  # at each region's game ratio
+    for r in range(len(reg_rows_t)):
+        rho = float(rho_game[r])
+        c = rho * m_r[r]
+        row = {"region": int(ser_t.meta.iloc[reg_rows_t[r]]["region"]), "rho_game": rho, "price": float(p_r[r]), "margin": float(m_r[r])}
+        for plan in ["Our forecast", "Our P50 only", "Seasonal naive", "Last year's peak", "Ground truth"]:
+            K = capacity(plan, r, rho)
+            row[plan] = {"capacity": K, "realised": float(capacity_cost(K, actual[r][None], c, m_r[r])[0]),
+                         "expected": float(capacity_cost(K, eval_reps[:, r], c, m_r[r]).mean())}
+        per_region.append(row)
+    return {"rho": RHO.tolist(), "rho_game": rho_game.tolist(), "game_capacity_share": GAME_CAPACITY_SHARE, "curves": curves, "per_region": per_region}
+
+
 def run(world_dir: str | Path, out_dir: str | Path, log=print) -> dict:
     t_start = time.time()
     world, out = Path(world_dir), Path(out_dir)
@@ -294,7 +400,7 @@ def run(world_dir: str | Path, out_dir: str | Path, log=print) -> dict:
     val = {}
     for i, name in enumerate(METHODS):
         f, trials = tune(name, ser_v, st_v, VAL_FIT, log)
-        pr = Probabilistic(f, VAL_YEARS, seed=100 + i)
+        pr = Probabilistic(f, VAL_YEARS, 100 + i, st_v, log)
         # Upper width and reconciliation on the upper levels, then the SKU width on the SKU levels.
         grid_u = []
         for k in WIDTHS_UPPER:
@@ -313,7 +419,8 @@ def run(world_dir: str | Path, out_dir: str | Path, log=print) -> dict:
         tab = score_table(ser_v, q_best, VAL_FIT, years2)
         best = {"width_upper": bu["width"], "width_lower": bl["width"], "reconciliation": bu["reconciliation"], "score": mean_wql(tab), "table": tab}
         val[name] = {"fitted": f, "trials": trials, "grid_upper": grid_u, "grid_lower": grid_l, "best": best, "fallback": f.fallback,
-                     "q": q_best, "setting": (f.model.setting if f.model is not None else {})}
+                     "q": q_best, "setting": (f.model.setting if f.model is not None else {}),
+                     "error_origins": {"origins": pr.origins, "observed": pr.observed, "level_errors": len(pr.blocks.level)}}
         log(f"  {name}: score {best['score']:.4f} widths {bu['width']}/{bl['width']} {bu['reconciliation']} fallback {f.fallback}")
     chosen = min(METHODS, key=lambda n: val[n]["best"]["score"])
     log(f"chosen: {chosen}")
@@ -326,98 +433,40 @@ def run(world_dir: str | Path, out_dir: str | Path, log=print) -> dict:
     for i, name in enumerate(METHODS):
         v = val[name]
         f = refit(v["fitted"], ser_t, st_t, TEST_FIT)
-        pr = Probabilistic(f, TEST_YEARS, seed=200 + i)
+        pr = Probabilistic(f, TEST_YEARS, 200 + i, st_t, log)
         b = v["best"]
         paths = pr.paths(b["width_upper"], b["width_lower"], b["reconciliation"])
         q = pr.quantile_table(paths)
-        test[name] = {"fitted": f, "pr": pr, "paths": paths, "q": q, "table": score_table(ser_t, q, TEST_FIT, years5), "fallback": f.fallback}
+        test[name] = {"fitted": f, "pr": pr, "paths": paths, "q": q, "table": score_table(ser_t, q, TEST_FIT, years5), "fallback": f.fallback,
+                      "error_origins": {"origins": pr.origins, "observed": pr.observed, "level_errors": len(pr.blocks.level)}}
         log(f"  {name}: test score {mean_wql(test[name]['table']):.4f}")
 
-    # ---- ground truth
+    # ---- ground truth and capacity, first future
     log("ground truth")
     truth_t = truth_by_series(ser_t, w, reps, rep_sku)  # months 37..120
     truth_v = truth_by_series(ser_v, w, reps, rep_sku)
-    truth = {}
-    for label, ser, tr, T, yrs, qsrc in (("test", ser_t, truth_t, TEST_FIT, years5, test[chosen]["q"]),
-                                          ("validation", ser_v, truth_v, VAL_FIT, years2, None)):
-        rows = level_rows(ser)
-        tq = np.quantile(tr, fu.QUANTILES, axis=0)  # (3, series, months)
-        tmean = tr.mean(axis=0)
-        tab = {}
-        for lv, idx in rows.items():
-            tab[lv] = []
-            for j in range(yrs[lv]):
-                m = slice(T + 12 * j - 36, T + 12 * (j + 1) - 36)  # truth months start at 37
-                a = ser.y[idx, T + 12 * j:T + 12 * (j + 1)]
-                cell = {"wape_truth_mean": fu.wape(a, tmean[idx, m]), "wql_truth": fu.scores(a, tq[:, idx, m])["wql"]}
-                if qsrc is not None:
-                    ours = qsrc[lv][:, :, 12 * j:12 * (j + 1)]
-                    inside = (tr[:, idx, m] >= ours[0][None]) & (tr[:, idx, m] <= ours[2][None])
-                    cell["truth_inside_our_p10_p90"] = float(inside.mean())
-                    cell["true_p10_p90_width_vs_ours"] = float((tq[2, idx, m] - tq[0, idx, m]).sum() / max((ours[2] - ours[0]).sum(), 1e-9))
-                tab[lv].append(cell)
-        truth[label] = tab
-
-    # ---- capacity check on years 7 to 10 (forecast months 13 to 60 from month 60)
+    truth = {"test": truth_table(ser_t, truth_t, TEST_FIT, years5, test[chosen]["q"]),
+             "validation": truth_table(ser_v, truth_v, VAL_FIT, years2, None)}
     log("capacity")
-    reg_rows_t = np.nonzero(ser_t.meta["level"].to_numpy() == "Region")[0]
-    reg_up = np.searchsorted(ser_t.upper_idx, reg_rows_t)
-    months = slice(TEST_FIT + 12, TEST_FIT + 60)  # months 73..120
-    fmonths = slice(12, 60)
-    actual = ser_t.y[reg_rows_t, months]  # (8, 48)
-    tr_reg = truth_t[:, reg_rows_t, 36:84]  # truth months 73..120
-    plan_reps, eval_reps = tr_reg[:100], tr_reg[100:]
-    sk = w.skus
-    price = sk["price"].to_numpy()
-    margin_unit = (sk["price"] * sk["margin"]).to_numpy()
-    hist = w.units[:, :, :TEST_FIT].sum(axis=2)  # (region, sku) units in years 1 to 5
-    p_r = (hist * price).sum(1) / hist.sum(1)
-    m_r = (hist * margin_unit).sum(1) / hist.sum(1)
-    rho_game = GAME_CAPACITY_SHARE * p_r / m_r
-    plans = {f"{n}": test[n]["paths"]["upper"][:, reg_up, fmonths] for n in METHODS}
-    curves = {}
-    per_region = []
-    for plan in ["Our forecast", "Our P50 only", "Seasonal naive", "Last year's peak", "Ground truth"] + [n for n in METHODS if n not in (chosen, "Seasonal naive")]:
-        realised, expected = [], []
-        for rho_scale in RHO:
-            rr, ee = 0.0, 0.0
-            for r in range(len(reg_rows_t)):
-                rho = rho_scale
-                c = rho * m_r[r]
-                if plan == "Our forecast":
-                    K = capacity_plan(plans[chosen][:, r], rho)
-                elif plan == "Our P50 only":
-                    K = float(np.quantile(plans[chosen][:, r], 0.5, axis=0).max())
-                elif plan == "Last year's peak":
-                    K = float(ser_t.y[reg_rows_t[r], TEST_FIT - 12:TEST_FIT].max())
-                elif plan == "Ground truth":
-                    K = capacity_plan(plan_reps[:, r], rho)
-                else:
-                    K = capacity_plan(plans[plan][:, r], rho)
-                rr += float(capacity_cost(K, actual[r][None], c, m_r[r])[0])
-                ee += float(capacity_cost(K, eval_reps[:, r], c, m_r[r]).mean())
-            realised.append(rr)
-            expected.append(ee)
-        curves[plan] = {"realised": realised, "expected": expected}
-    # Per region at each region's game ratio.
-    for r in range(len(reg_rows_t)):
-        rho = float(rho_game[r])
-        c = rho * m_r[r]
-        row = {"region": int(ser_t.meta.iloc[reg_rows_t[r]]["region"]), "rho_game": rho, "price": float(p_r[r]), "margin": float(m_r[r])}
-        for plan in ["Our forecast", "Our P50 only", "Seasonal naive", "Last year's peak", "Ground truth"]:
-            if plan == "Our forecast":
-                K = capacity_plan(plans[chosen][:, r], rho)
-            elif plan == "Our P50 only":
-                K = float(np.quantile(plans[chosen][:, r], 0.5, axis=0).max())
-            elif plan == "Last year's peak":
-                K = float(ser_t.y[reg_rows_t[r], TEST_FIT - 12:TEST_FIT].max())
-            elif plan == "Ground truth":
-                K = capacity_plan(plan_reps[:, r], rho)
-            else:
-                K = capacity_plan(plans["Seasonal naive"][:, r], rho)
-            row[plan] = {"capacity": K, "realised": float(capacity_cost(K, actual[r][None], c, m_r[r])[0]),
-                             "expected": float(capacity_cost(K, eval_reps[:, r], c, m_r[r]).mean())}
-        per_region.append(row)
+    capacity = capacity_check(ser_t, w, truth_t, test, chosen)
+
+    # ---- second future: years 6 to 10 drawn again under the same rules with another seed, scored once.
+    # Years 1 to 5 are the same, so the fits, forecasts and bands above are the ones scored.
+    log("second future")
+    w2 = ds.load(world, world / SECOND_FUTURE)
+    ser_t2 = ds.build_series(w2, TEST_FIT)
+    assert ser_t2.meta.equals(ser_t.meta) and np.array_equal(ser_t2.y[:, :TEST_FIT], ser_t.y[:, :TEST_FIT])
+    rep2 = np.load(world / SECOND_FUTURE / "truth_replications.npz")
+    truth_t2 = truth_by_series(ser_t2, w2, rep2["units"], rep2["sku_id"])
+    second = {
+        "test": {n: {"table": score_table(ser_t2, test[n]["q"], TEST_FIT, years5)} for n in METHODS},
+        "truth": truth_table(ser_t2, truth_t2, TEST_FIT, years5, test[chosen]["q"]),
+        "capacity": capacity_check(ser_t2, w2, truth_t2, test, chosen),
+        "world": json.loads((world / SECOND_FUTURE / "world_future.json").read_text()),
+    }
+    for n in METHODS:
+        second["test"][n]["score"] = mean_wql(second["test"][n]["table"])
+        log(f"  {n}: second-future score {second['test'][n]['score']:.4f}")
 
     # ---- explanations for LightGBM (test fit)
     shap = None
@@ -441,17 +490,22 @@ def run(world_dir: str | Path, out_dir: str | Path, log=print) -> dict:
         "validation": {n: {"setting": val[n]["setting"], "fallback": val[n]["fallback"],
                             "trials": [{"setting": t["setting"], "score": t["score"]} for t in val[n]["trials"]],
                             "grid_upper": val[n]["grid_upper"], "grid_lower": val[n]["grid_lower"],
-                            "best": {k: (clean(v) if k == "table" else v) for k, v in val[n]["best"].items()}}
+                            "best": {k: (clean(v) if k == "table" else v) for k, v in val[n]["best"].items()},
+                            "error_origins": val[n]["error_origins"]}
                     for n in METHODS},
         "chosen": chosen,
-        "test": {n: {"table": clean(test[n]["table"]), "score": mean_wql(test[n]["table"]), "fallback": test[n]["fallback"]} for n in METHODS},
+        "test": {n: {"table": clean(test[n]["table"]), "score": mean_wql(test[n]["table"]), "fallback": test[n]["fallback"],
+                     "error_origins": test[n]["error_origins"]} for n in METHODS},
         "truth": {k: clean(v) for k, v in truth.items()},
-        "capacity": {"rho": RHO.tolist(), "rho_game": rho_game.tolist(), "game_capacity_share": GAME_CAPACITY_SHARE, "curves": curves, "per_region": per_region},
+        "capacity": capacity,
+        "second_future": {"test": {n: {"table": clean(v["table"]), "score": v["score"]} for n, v in second["test"].items()},
+                          "truth": clean(second["truth"]), "capacity": second["capacity"], "world": second["world"]},
+        "error_samples": {"first_refit": FIRST_REFIT, "refit_every": REFIT_EVERY, "min_level_months": fu.MIN_LEVEL_MONTHS},
         "shap": shap,
         "runtime_s": round(time.time() - t_start),
     }
     (out / "overview.json").write_text(json.dumps(overview, separators=(",", ":"), default=float))
-    (out / "series.json").write_text(json.dumps(series_payload(ser_v, ser_t, val, test, truth_v, truth_t, chosen), separators=(",", ":")))
+    (out / "series.json").write_text(json.dumps(series_payload(ser_v, ser_t, val, test, truth_v, truth_t, chosen, ser_t2, truth_t2), separators=(",", ":")))
     log(f"done in {overview['runtime_s']} s")
     return overview
 
@@ -462,7 +516,7 @@ def median_series(ser: ds.Series, level: str, upto: int) -> int:
     return int(idx[np.argsort(vol)[len(vol) // 2]])
 
 
-def series_payload(ser_v, ser_t, val, test, truth_v, truth_t, chosen) -> dict:
+def series_payload(ser_v, ser_t, val, test, truth_v, truth_t, chosen, ser_t2, truth_t2) -> dict:
     """Histories, forecasts and truth bands for the presets (median-volume series per level) and for every
     region, rounded to whole units."""
 
@@ -482,6 +536,8 @@ def series_payload(ser_v, ser_t, val, test, truth_v, truth_t, chosen) -> dict:
             "validation": {n: fan(val[n]["q"], lv, pos_v) for n in METHODS},
             "test": fan(test[chosen]["q"], lv, pos_t),
             "truth_test": [np.round(np.quantile(truth_t[:, it, 24:], q, axis=0)).astype(int).tolist() for q in (0.1, 0.5, 0.9)],
+            "actual_second_future": np.round(ser_t2.y[it, TEST_FIT:]).astype(int).tolist(),
+            "truth_second_future": [np.round(np.quantile(truth_t2[:, it, 24:], q, axis=0)).astype(int).tolist() for q in (0.1, 0.5, 0.9)],
         })
     reg = level_rows(ser_t)["Region"]
     tot = level_rows(ser_t)["Total"]
@@ -489,7 +545,9 @@ def series_payload(ser_v, ser_t, val, test, truth_v, truth_t, chosen) -> dict:
         for p, i in enumerate(idx):
             out["regions"].append({"level": lv, "region": int(ser_t.meta.iloc[i]["region"]), "actual": np.round(ser_t.y[i]).astype(int).tolist(),
                                        "test": fan(test[chosen]["q"], lv, p),
-                                       "truth_test": [np.round(np.quantile(truth_t[:, i, 24:], q, axis=0)).astype(int).tolist() for q in (0.1, 0.5, 0.9)]})
+                                   "truth_test": [np.round(np.quantile(truth_t[:, i, 24:], q, axis=0)).astype(int).tolist() for q in (0.1, 0.5, 0.9)],
+                                   "actual_second_future": np.round(ser_t2.y[i, TEST_FIT:]).astype(int).tolist(),
+                                   "truth_second_future": [np.round(np.quantile(truth_t2[:, i, 24:], q, axis=0)).astype(int).tolist() for q in (0.1, 0.5, 0.9)]})
     return out
 
 
@@ -507,6 +565,13 @@ def ensure_world(world_dir: str | Path, log=print) -> None:
     if not (world / "truth_replications.npz").exists():
         log("building 200 ground-truth replications (about 13 minutes)")
         replicate(world, 200, 4)
+    second = world / SECOND_FUTURE
+    if not (second / "skus_future.parquet").exists():
+        log("building the second future")
+        generate_future(world, stream=SECOND_FUTURE_STREAM, out_dir=second)
+    if not (second / "truth_replications.npz").exists():
+        log("building 200 ground-truth replications of the second future (about 13 minutes)")
+        replicate(world, 200, 4, future_dir=second, stream=SECOND_REPLICATION_STREAM)
 
 
 def main(world_dir: str, out_dir: str) -> None:
