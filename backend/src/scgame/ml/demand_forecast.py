@@ -222,7 +222,7 @@ class Probabilistic:
         return {"upper": upper, **self.lower_paths(k_lower, upper)}
 
     def quantile_table(self, paths: dict) -> dict[str, np.ndarray]:
-        """(3, series, months) per level present in `paths`."""
+        """(4, series, months), P10, P50, P90 and the mean, per level present in `paths`."""
         out = {}
         if "upper" in paths:
             up_lev = self.ser.meta["level"].to_numpy()[self.ser.upper_idx]

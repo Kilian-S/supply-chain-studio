@@ -77,8 +77,11 @@ def sample_paths(mean: np.ndarray, blocks: ErrorBlocks, draws: dict[str, np.ndar
         for m in range(12):
             c = (origin + 12 * j + m) % 12
             noise[:, :, m] = blocks.noise[c][draws["noise"][:, j, c]]
-        logm = k * (cum[:, :, None] + noise)
-        out[:, :, 12 * j:12 * (j + 1)] = (mean[None, :, 12 * j:12 * (j + 1)] + OFFSET) * np.exp(logm) - OFFSET
+        factor = np.exp(k * (cum[:, :, None] + noise))
+        # Rescale so every series' paths average its mean forecast. exp(k e) averages above 1 even when the
+        # errors e are centred, and summing thousands of inflated series pushed the upper levels up with k.
+        factor /= factor.mean(axis=0, keepdims=True)
+        out[:, :, 12 * j:12 * (j + 1)] = (mean[None, :, 12 * j:12 * (j + 1)] + OFFSET) * factor - OFFSET
     return np.maximum(out, 0.0)
 
 
@@ -145,8 +148,9 @@ def sum_to(child: np.ndarray, index: np.ndarray, n: int) -> np.ndarray:
 
 
 def quantiles(paths: np.ndarray) -> np.ndarray:
-    """(3, series, months) P10, P50, P90 from (path, series, months)."""
-    return np.quantile(paths, QUANTILES, axis=0)
+    """(4, series, months) P10, P50, P90 and the mean from (path, series, months). The mean is the coherent
+    point forecast; it does not depend on the width of the bands, so point accuracy is scored on it too."""
+    return np.concatenate([np.quantile(paths, QUANTILES, axis=0), paths.mean(axis=0)[None]])
 
 
 def scores(actual: np.ndarray, q: np.ndarray) -> dict:
@@ -154,7 +158,7 @@ def scores(actual: np.ndarray, q: np.ndarray) -> dict:
     2 x summed pinball loss / summed actual units (at P50 it equals WAPE)."""
     tot = actual.sum()
     if tot <= 0:
-        return {"wql": np.nan, "wape": np.nan, "bias": np.nan, "coverage": np.nan}
+        return {"wql": np.nan, "wape": np.nan, "bias": np.nan, "coverage": np.nan, "wape_mean": np.nan, "bias_mean": np.nan}
     wql = []
     for qi, tau in enumerate(QUANTILES):
         d = actual - q[qi]
@@ -164,6 +168,8 @@ def scores(actual: np.ndarray, q: np.ndarray) -> dict:
         "wape": float(np.abs(actual - q[1]).sum() / tot),
         "bias": float((q[1] - actual).sum() / tot),
         "coverage": float(np.mean((actual >= q[0]) & (actual <= q[2]))),
+        "wape_mean": float(np.abs(actual - q[3]).sum() / tot) if len(q) > 3 else np.nan,
+        "bias_mean": float((q[3] - actual).sum() / tot) if len(q) > 3 else np.nan,
     }
 
 
