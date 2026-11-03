@@ -179,7 +179,7 @@ def fit_predict_log_index(s: dict, f_train: pd.DataFrame, label: np.ndarray, wei
             x = np.repeat(f.to_numpy(), N_CAT, axis=0)
             return np.hstack([x, np.tile(np.arange(N_CAT), len(f))[:, None]])
         model = lgb.LGBMRegressor(n_estimators=s["trees"], learning_rate=0.05, num_leaves=s["leaves"], min_child_samples=s["rows_per_leaf"],
-                                  min_child_weight=0.0, min_data_in_bin=1, max_bin=63, subsample=1.0, colsample_bytree=1.0,
+                                  min_data_per_group=s["rows_per_leaf"], cat_smooth=0.0, cat_l2=0.0, min_child_weight=0.0, min_data_in_bin=1, max_bin=63, subsample=1.0, colsample_bytree=1.0,
                                   deterministic=True, force_row_wise=True, n_jobs=1, verbose=-1, random_state=0)
         model.fit(rows(f_train), label.ravel(), sample_weight=weight.ravel(), categorical_feature=[4])
         return model.predict(rows(f_target)).reshape(n_t, N_CAT)
@@ -270,7 +270,12 @@ def error_model(actual: np.ndarray, point: np.ndarray, actual_months: np.ndarray
 def draws(point: np.ndarray, shape: np.ndarray, em: ErrorModel, rng: np.random.Generator, n: int = N_DRAWS) -> tuple[np.ndarray, np.ndarray]:
     """For one region, yearly units per category (n, 8) and monthly totals (n, 12)."""
     a = em.sigma_region * np.sqrt(1 + 1 / em.n) * rng.standard_t(em.n - 1, size=n)
-    eps = rng.normal(0, em.sigma_cell, size=(n, N_CAT))
+    # Cell errors average to zero over the region (weighted by its predicted mix), as the fitted cell parts
+    # do by construction, so the region total carries the region error only; rescaled so that their
+    # weighted variance is sigma_cell^2.
+    mix = point / point.sum()
+    u = rng.normal(0, 1, size=(n, N_CAT))
+    eps = (u - (u @ mix)[:, None]) * em.sigma_cell / np.sqrt(max(1 - (mix ** 2).sum(), 1e-9))
     yearly = point[None] * np.exp(a[:, None] + eps)
     months = np.einsum("dc,cm->dm", yearly, shape)
     expected = point @ shape
@@ -420,13 +425,29 @@ def run(world_dir: str | Path, out_dir: str | Path, log=print, validation_only: 
         for name, mask in (("inside_range", inside), ("outside_range", ~inside)):
             block[name] = {"score": selection_score(actual_t[mask], point[mask]),
                            **interval_scores(actual_t[mask], [d[0] for d, k in zip(dd, mask) if k])}
+        island = test_reg["landmass"].to_numpy() != "continent"
+        for name, mask in (("islands", island), ("continent", ~island)):
+            block[name] = {"score": selection_score(actual_t[mask], point[mask])}
         realised_net = predict_units(s, yearly, f, pop, all_idx, TEST_FIT, yearly[:, :, 4, :], f_test, pop_test)
         block["realised_network_score"] = selection_score(actual_t, realised_net)
+        block["realised_network_bias_region"] = float(region_scores(actual_t, realised_net)["bias_region"].mean())
         block["per_region"] = [{"region": test_reg["name"].iloc[j], **{k: float(rsc[k][j]) for k in rsc}, "p50": point[j].tolist(),
                                 "p10": np.quantile(dd[j][0], 0.1, axis=0).tolist(), "p90": np.quantile(dd[j][0], 0.9, axis=0).tolist()}
                                for j in range(len(point))]
         test[m] = block
         log(f"test {m}: {block['score']:.4f}")
+
+    # Paired per-region differences of the selection score against the chosen method (negative favours it).
+    def per_region_score(point: np.ndarray) -> np.ndarray:
+        r = region_scores(actual_t, point)
+        return (r["wape_region_category"] + r["wape_region"]) / 2
+    base = per_region_score(test_draws[chosen][0])
+    for m in METHODS:
+        if m == chosen:
+            continue
+        d = base - per_region_score(test_draws[m][0])
+        test[m]["paired_vs_chosen"] = {"mean": float(d.mean()), "se": float(d.std(ddof=1) / np.sqrt(len(d))),
+                                       "chosen_better_regions": int((d < 0).sum()), "regions": len(d)}
 
     # Ground truth, check only.
     tr_t = sim["test_reps"].sum(axis=-1).astype(float)  # (200, 30, 8, 12)
