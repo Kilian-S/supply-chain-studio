@@ -185,7 +185,9 @@ def windows(y: np.ndarray, bulk: np.ndarray, origins: list[int], with_target: bo
             "origin_month": np.full(n, (T - 1) % 12 + 1), "ok": ok,
             "target": (y[:, T:T + 12] / safe[:, None]) if with_target else None,
         })
-    cat = lambda k: np.concatenate([r[k] for r in rows])
+    def cat(k: str) -> np.ndarray:
+        return np.concatenate([r[k] for r in rows])
+
     dyn = pd.DataFrame({k: cat(k) for k in ("growth", "months_on_sale", "empty_share", "bulk_share", "origin_month")})
     return Windows(cat("series"), cat("origin"), cat("scale"), np.vstack([r["lags"] for r in rows]), dyn,
                    np.vstack([r["target"] for r in rows]) if with_target else None, cat("ok"))

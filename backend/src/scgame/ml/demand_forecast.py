@@ -21,6 +21,8 @@ import os
 # parallel processes, and fixed thread counts keep floating-point sums, and so the outputs, reproducible.
 for _var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"):
     os.environ.setdefault(_var, "1")
+# The imports below must follow the thread settings above, hence E402.
+# ruff: noqa: E402
 
 import json
 import sys
@@ -509,7 +511,8 @@ def ensure_world(world_dir: str | Path, log=print) -> None:
 
 def main(world_dir: str, out_dir: str) -> None:
     warnings.filterwarnings("ignore")
-    log = lambda s: print(s, flush=True)
+    def log(s: str) -> None:
+        print(s, flush=True)
     ensure_world(world_dir, log)
     run(world_dir, out_dir, log=log)
 
