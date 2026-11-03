@@ -1,8 +1,9 @@
 # New-region demand, implementation proposal
 
 Model C from `ML_ROADMAP.md`. Written 3 November 2026 on branch `claude/relaxed-brahmagupta-qd6agt`
-(from model B's branch `claude/festive-johnson-bl41d7`). Nothing is built yet. Section 13 lists the
-decisions I need, each with a recommendation.
+(from model B's branch `claude/festive-johnson-bl41d7`). Kilian agreed every recommendation of section 13
+on 3 November 2026, and the model design D1 to D14 in section 4a after a first-principles explanation
+in chat. He asked where urban share comes from (section 3) and kept it as a feature.
 
 Figures come from world v1, seed 7, training set (years 1 to 3). While profiling I printed, for years 1
 to 3 only, each region's units, bulk share and units per inhabitant by category, the network's yearly
@@ -105,6 +106,28 @@ features, since they come from a few random buyers.
 
 **Recommendation.** These four methods and grids. No new dependency (scikit-learn and LightGBM are
 installed).
+
+## 4a. Model design (agreed)
+
+Explained from first principles in the chat of 3 November 2026; each choice below was agreed. D5 and
+D13 change sections 3 and 6 of the first draft.
+
+| # | Choice | Why |
+|---|---|---|
+| D1 | One example per region × category; the 8 regions are the real sample size | A region's rows share its features and its luck |
+| D2 | Population as exposure, label per 1,000 inhabitants | Removes a known proportional effect, so 7 regions can learn the rest |
+| D3 | Label as an index against the network (network = 1) | Separates how the region buys (C) from how much the shop sells (B); stable over the years |
+| D4 | Log of the label and of income | Effects are multiplicative; errors symmetric in ratio; predictions positive |
+| D5 | One intercept; category enters only through its cross with log income | The index is centred in every category by construction, so category intercepts would be about zero and cost 7 weights |
+| D6 | Rows weighted by their share of the region's units, each region weighing the same | Train on the loss used to choose |
+| D7 | Bulk orders in the label, or added at the network average, as a setting | A few random buyers decide them; validation decides |
+| D8 | Four models from no learning (population share) to the most flexible (LightGBM) | Shows what each step of complexity buys with this little data; no neural network |
+| D9 | Ridge (L2) rather than least squares or Lasso | 12 weights against 7 regions, and log income and urban share correlate at 0.94 |
+| D10 | Small grids, about 60 settings in all | 8 folds cannot separate many settings without selection bias |
+| D11 | Leave one region out, fitted on years 1 to 3, scored on year 4 | A region the model never saw, and stability over time |
+| D12 | WAPE with equal weight per region | Each region is one entry decision |
+| D13 | Two-part log-normal error from the leave-one-region-out errors; the region part uses a t distribution with n − 1 degrees of freedom and √(1 + 1/n); no tuned width | Out-of-sample errors, an sd estimated from 8 values, no second set to tune on |
+| D14 | Test on 30 simulated new regions, 10 outside the training range | Validation regions were used to choose; only regions that never existed give a clean test |
 
 ## 5. Forecast origin and the network's level
 
@@ -280,6 +303,8 @@ Expected runtime about 15 minutes on 4 cores, most of it the replications. Nothi
 simulator, `policy_sim.py`, B's code or any other model changes.
 
 ## 13. Decisions
+
+All agreed by Kilian on 3 November 2026.
 
 | # | Decision | Recommendation |
 |---|---|---|
