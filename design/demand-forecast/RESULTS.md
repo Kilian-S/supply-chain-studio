@@ -200,3 +200,7 @@ of them.
    apart from business value (section 6).
 5. **Storyline.** Section 10 of the proposal still fits, with screen 7 showing the fan against the actual
    and the ground truth, and the results screen led by the capacity cost across cost ratios.
+
+## 11. Local runs 4 to 6 (3 November 2026)
+
+See HANDOVER.md section 0. Two corrections after the out-of-sample error samples, both disclosed as made after seeing test scores. Sample paths now average the mean forecast (a bias in exp(k e) inflated upper levels with band width), and point accuracy is also scored on the coherent mean forecast so it no longer depends on band width. The numbers in sections above that differ are superseded by HANDOVER.md section 0.

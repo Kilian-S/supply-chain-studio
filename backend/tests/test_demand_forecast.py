@@ -98,12 +98,13 @@ def test_middle_out_children_sum_to_their_parent():
     assert np.allclose(out[2], [10.0, 0.0])  # nothing to scale where the children forecast nothing
 
 
-def test_paths_carry_level_errors_over_the_years():
-    blocks = fu.ErrorBlocks(level=np.array([[0.1], [0.1]]), noise=[np.zeros((1, 1)) for _ in range(12)])
-    draws = {"level": np.zeros((1, 3), dtype=int), "noise": np.zeros((1, 3, 12), dtype=int)}
+def test_paths_carry_level_errors_over_the_years_and_average_the_forecast():
+    blocks = fu.ErrorBlocks(level=np.array([[0.1], [-0.1]]), noise=[np.zeros((1, 1)) for _ in range(12)])
+    draws = {"level": np.array([[0, 0, 0], [1, 1, 1]]), "noise": np.zeros((2, 3, 12), dtype=int)}
     p = fu.sample_paths(np.full((1, 36), 99.0), blocks, draws, k=1.0, origin=36)
-    assert np.allclose(p[0, 0, 0], 100 * np.exp(0.1) - 1)
-    assert np.allclose(p[0, 0, 24], 100 * np.exp(0.3) - 1)
+    ratio = (p[0, 0] + 1) / (p[1, 0] + 1)
+    assert np.allclose(ratio[0], np.exp(0.2)) and np.allclose(ratio[24], np.exp(0.6))  # levels add up
+    assert np.allclose(p.mean(axis=0), 99.0, rtol=1e-5)  # every month's paths average the forecast
 
 
 def test_error_blocks_use_partial_years_centre_and_follow_the_calendar():
@@ -119,9 +120,10 @@ def test_error_blocks_use_partial_years_centre_and_follow_the_calendar():
     assert all(np.allclose(c.sum(axis=0), 0) for c in b.noise)
     assert len(b.noise[0]) == 1 and len(b.noise[1]) == 2  # January from origin 24 only; February from both
     assert b.noise[1][:, 0].max() > b.noise[2][:, 0].max()  # the high February noise is stored as February
-    draws = {"level": np.zeros((1, 1), dtype=int), "noise": np.zeros((1, 1, 12), dtype=int)}
+    draws = {"level": np.zeros((2, 1), dtype=int), "noise": np.zeros((2, 1, 12), dtype=int)}
+    draws["noise"][1, 0, 1] = 1  # the second path draws February's other observation
     p = fu.sample_paths(np.full((1, 12), 9.0), b, draws, k=1.0, origin=36)  # month 37 is a January
-    assert p[0, 0].argmax() == 1
+    assert p[0, 0].argmax() == 1  # the path with origin 24's high February peaks in February
 
 
 class _Series:  # the parts of a Series the seasonal-naive refits read

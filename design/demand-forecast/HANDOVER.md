@@ -10,6 +10,41 @@ questions), `PROPOSAL.md` (the agreed design, sections 2 and 4a in particular), 
 
 ---
 
+## 0. Update after the local runs (3 November 2026, runs 4 to 6)
+
+The cloud session's last commit (out-of-sample error samples, a second future) was run locally. Two
+faults were found and fixed; this section supersedes the numbers in section 6 where they differ.
+
+- **Run 4 (cloud code as committed).** Calibration improved, but sample paths multiplied the forecast by
+  exp(k e), which averages above 1 even with centred errors; summed over thousands of series it pushed
+  the upper levels up, more so with wider bands (seasonal naive, at the widest width, over-forecast the
+  Total by 146%). Found on test-year scores.
+- **Run 5.** Each series' paths are rescaled to average its mean forecast
+  (`forecast_uncertainty.sample_paths`). A statistical correction, not a tuning choice; widths are
+  re-chosen on the validation set as before. Disclosed as changed after seeing test scores.
+- **Run 6.** Point accuracy is also scored on the coherent mean forecast (`wape_mean`, `bias_mean` in
+  every table cell; the quantile tables carry the mean as a fourth row). The median of wide, skewed
+  paths sits below the mean, so P50 scores depended on band width (ETS looked 2 to 7% low).
+
+Headline results of run 6 (`O.test`, `O.second_future`, `O.truth`, `O.capacity`).
+
+| Result | First future (test) | Second future |
+|---|---|---|
+| Chosen method (validation) | Neural network | same |
+| Network, Total, mean WAPE by year 6 to 10 | 2.0, 4.1, 7.8, 15.5, 25.8% | 2.5, 2.5, 4.4, 9.2, 14.9% |
+| ETS, Total, mean WAPE | 3.8, 4.7, 5.0, 3.2, 1.9% | 5.1, 6.5, 7.8, 7.9, 7.7% |
+| Network, SKU, mean WAPE (years 6, 7) | 20.2, 28.2% | 20.6, 28.9% |
+| Replications inside the network's P10 to P90, Total | 100, 100, 100, 84, 30% | 99, 100, 100, 100, 95% |
+| Network SKU coverage (years 6, 7) | 83, 80% | |
+| Capacity cost over the ground-truth plan at the game ratio | our forecast +16%, last year's peak +7%, ETS +11%, LightGBM +12%, P50 only +29% | |
+
+Reading. The learned models are the most accurate for about three years; beyond that the growth
+ceiling of years 6 to 10 decides and ETS, which damps growth, is closer. Bands are now calibrated
+except in the last year of the first future. The capacity plan from the chosen forecast still loses to
+last year's peak at the game's cost ratio. Runtime about 32 minutes on 10 cores (run 6, 1,895 s).
+
+---
+
 ## 1. The split, corrected
 
 The brief for this handover speaks of training years 1 to 3, validation year 4 and test year 5. That is
@@ -239,7 +274,7 @@ The model module builds years 6 to 10 (`scgame.world.future`, about 10 s) and th
 (2,835 s in run 3, `O.runtime_s`), so about an hour in all on 4 cores. It pins linear algebra to one thread
 per process, as in the committed run.
 
-**Not yet verified.** A rebuild from a fresh clone was started (generator 11 s, years 6 to 10 built) and
+**Superseded.** Rebuilt locally on 3 November (section 0). Earlier note. A rebuild from a fresh clone was started (generator 11 s, years 6 to 10 built) and
 stopped at Kilian's request during the replications; he checks it locally. That the rebuilt outputs equal
 the committed ones is therefore unconfirmed. LightGBM is deterministic (identical SHAP values across the
 three runs); the network depends on fixed seeds and single-threaded linear algebra. Steps can also be run
