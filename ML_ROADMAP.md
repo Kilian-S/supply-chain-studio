@@ -206,17 +206,24 @@ questions fast, H flags risk, O decides, and the simulator checks the decision.
   elasticities; never used to choose.
 - **Business check.** One-year FC capacity for each new region at the game's cost ratio, full range shown.
 - **Headline.** Log-linear regression chosen (validation 0.103, noise floor 0.088). On the test it ties
-  nearest analogues (0.110 against 0.111; population share 0.155, LightGBM 0.128; noise floor 0.081) and
-  under-forecasts by 7.8% because the network grew from year 4 to 5 (0.089 with the realised network).
-  Bands too wide (87% coverage of an 80% band). Capacity plan 2% above the ground-truth plan, population
-  share 21%. Learning curve 0.182 with 2 training regions, 0.103 with 7, still falling.
+  nearest analogues (0.110 against 0.111, paired difference −0.001 with standard error 0.007; nearest
+  analogues better on the continent, worse on islands), ahead of LightGBM 0.127 and population share 0.155
+  (noise floor 0.081). It under-forecasts by 7.8% because the network grew from year 4 to 5 (0.089 with the
+  realised network). Cell bands too wide (87% coverage of an 80% band). Capacity plan 2 to 3% above the
+  ground-truth plan across all cost ratios, population share 20%; the P50-only plan matches ours only near
+  the game's ratio. Learning curve 0.182 with 2 training regions, 0.103 with 7, flattening.
+- **Independent review** (3 November). Found two code faults, fixed in run 2 and disclosed (`HANDOVER.md`
+  section 7). Cell errors were counted twice in region-total bands, and LightGBM never split on category.
+  Point forecasts and the chosen method did not change. Wording and missing disclosures fixed.
 - **Kilian's decisions.** 3 November. All thirteen recommendations of the proposal (section 13) and the
   model design D1 to D14 (section 4a), after a first-principles explanation; urban share kept as a
   feature after asking where it comes from.
 - **Decided while working alone, for review** (`HANDOVER.md` section 9). Month noise for the capacity
   check, 109 settings rather than the estimated 60, out-of-sample validation coverage, units-weighted
-  error parts, LightGBM details for 56 rows, the committed simulation.
-- **Open.** How to present the test tie with nearest analogues, the over-wide bands, which network
+  error parts, LightGBM details for 56 rows (including the categorical settings of run 2), the committed
+  simulation.
+- **Open.** How to present the test tie with nearest analogues, whether nearest analogues should get an
+  island on or off setting (the asymmetry the review found), the over-wide cell bands, which network
   forecast feeds O, the page (no frontend, no `card.json`).
 
 ### A. What-if surrogate (supervised regression, neural network)

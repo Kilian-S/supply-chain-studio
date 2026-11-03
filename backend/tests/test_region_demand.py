@@ -69,6 +69,31 @@ def test_validation_never_reads_years_4_and_5(setting):
     np.testing.assert_allclose(before, after)
 
 
+@pytest.mark.parametrize("setting", rd.settings(), ids=lambda s: "-".join(str(v) for v in s.values()))
+def test_leave_one_out_equals_a_panel_without_the_region(setting):
+    """Every setting: predicting region h inside the 8-region panel equals fitting a 7-region panel that never
+    held h (its data, its features in the standardisation, its units in the network level)."""
+    panel = toy_panel(seed=3)
+    h = 2
+    keep = [i for i in range(8) if i != h]
+    inside = rd.loo_predict(panel, setting, h)
+    seven = rd.Panel(panel.regions.iloc[keep].reset_index(drop=True), panel.monthly[keep], panel.price, panel.margin)
+    f7 = rd.features(seven.regions)
+    y7 = seven.yearly
+    alone = rd.predict_units(setting, y7, f7, seven.regions["population_m"].to_numpy(), np.arange(7), rd.VAL_FIT,
+                             y7[:, :, rd.VAL_LEVEL, :], rd.features(panel.regions).iloc[[h]], panel.regions["population_m"].to_numpy()[[h]])[0]
+    np.testing.assert_allclose(inside, alone, rtol=1e-9)
+
+
+def test_network_shape_reads_only_training_regions_and_the_level_year():
+    panel = toy_panel()
+    train = np.array([0, 1, 2, 4])
+    before = rd.network_shape(panel.monthly, train, 2)
+    panel.monthly[3] *= 5.0
+    panel.monthly[:, :, 36:, :] *= 2.0
+    np.testing.assert_allclose(before, rd.network_shape(panel.monthly, train, 2))
+
+
 def test_population_share_is_population_times_the_network_rate():
     panel = toy_panel()
     s = {"method": "Population share", "bulk": "in label"}
@@ -100,6 +125,20 @@ def test_draws_are_centred_and_widened_by_the_t_distribution():
     # t with 7 degrees of freedom × √(1 + 1/8): P90 at 1.415 × 1.061 × 0.2 = 0.300 (normal 0.256).
     assert abs(np.quantile(tot, 0.9) - 0.300) < 0.006
     np.testing.assert_allclose(months.sum(axis=1), yearly.sum(axis=1), rtol=1e-9)
+
+
+def test_cell_errors_leave_the_region_total_to_the_region_error():
+    rng = np.random.default_rng(1)
+    point = np.array([400.0, 300, 100, 80, 50, 40, 20, 10])
+    shape = np.full((rd.N_CAT, 12), 1 / 12)
+    em = rd.ErrorModel(sigma_region=0.0, sigma_cell=0.18, phi=0.0, n=8)
+    yearly, _ = rd.draws(point, shape, em, rng, n=50_000)
+    mix = point / point.sum()
+    log_err = np.log(yearly / point)
+    np.testing.assert_allclose(log_err @ mix, 0, atol=1e-12)  # weighted mean of the cell errors is zero
+    assert np.std(np.log(yearly.sum(axis=1) / point.sum())) < 0.02  # only second-order spread in the total
+    weighted_var = (mix * log_err ** 2).sum(axis=1).mean()
+    assert abs(np.sqrt(weighted_var) - 0.18) < 0.005
 
 
 def test_error_model_splits_region_and_cell_errors():
@@ -149,6 +188,19 @@ def test_simulated_copies_match_the_existing_regions_and_leave_the_world_untouch
     assert np.abs(ratio - 1).max() < 0.08, ratio
     after = {f.name: hashlib.sha256(f.read_bytes()).hexdigest() for f in files}
     assert before == after
+
+
+@needs_world
+@pytest.mark.skipif(not (OUT / "simulation.npz").exists(), reason="simulation not built")
+def test_simulated_bulk_matches_the_world_rate():
+    """Bulk units of the existing regions simulated as new (mean of the replications, year 4) against the world's
+    realised bulk units per year (years 1 to 4). The simulator uses the generator's rate (2 buyers per lumpy SKU
+    on average), the world realised 49 buyers for 26 SKUs, so a gap of about 10% is expected."""
+    sim = np.load(OUT / "simulation.npz")
+    simulated = sim["existing_reps"][..., 1].sum(axis=(1, 2, 3)).mean()
+    lines = pd.read_parquet(WORLD / "order_lines.parquet")
+    world = lines[(lines.day <= 4 * 365) & (lines.quantity >= rs.BULK_QTY)].quantity.sum() / 4
+    assert 0.85 < simulated / world < 1.3, simulated / world
 
 
 @pytest.mark.skipif(not (OUT / "overview.json").exists(), reason="model not built")
