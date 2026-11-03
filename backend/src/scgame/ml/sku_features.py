@@ -108,14 +108,14 @@ def build_features(lines: pd.DataFrame, orders: pd.DataFrame, skus: pd.DataFrame
         trend = float(np.polyfit(tm, np.log1p(months), 1)[0]) if len(months) >= 3 else 0.0
         recent = d[-52:].sum() / d.sum() if d.sum() > 0 else 0.0
         holding = 0.25 * s.unit_cost + 2.0 * s.volume_l
-        rows.append(dict(
-            sku_id=s.sku_id, mean_weekly_units=mean_w, revenue=float(d.sum() * s.price), cv2=cv2, adi=adi,
-            zero_share=float((d == 0).mean()), seasonality=_seasonal_strength(d), trend=trend, recent_share=recent,
-            volume_l=s.volume_l, weight_kg=s.weight_kg, margin=s.margin, price=s.price,
-            holding_to_margin=holding / max(s.price * s.margin, 0.01),
-            solo_share=float(solo.get(s.sku_id, 0.0)), basket_size=float(bsize.get(s.sku_id, 1.0)),
-            qty_per_line=float(qline.get(s.sku_id, 1.0)),
-        ))
+        rows.append({
+            "sku_id": s.sku_id, "mean_weekly_units": mean_w, "revenue": float(d.sum() * s.price), "cv2": cv2, "adi": adi,
+            "zero_share": float((d == 0).mean()), "seasonality": _seasonal_strength(d), "trend": trend, "recent_share": recent,
+            "volume_l": s.volume_l, "weight_kg": s.weight_kg, "margin": s.margin, "price": s.price,
+            "holding_to_margin": holding / max(s.price * s.margin, 0.01),
+            "solo_share": float(solo.get(s.sku_id, 0.0)), "basket_size": float(bsize.get(s.sku_id, 1.0)),
+            "qty_per_line": float(qline.get(s.sku_id, 1.0)),
+        })
     return pd.DataFrame(rows), weekly
 
 

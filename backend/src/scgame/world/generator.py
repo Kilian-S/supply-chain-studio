@@ -120,16 +120,16 @@ def draw_sku(rng: np.random.Generator, sku: int, ci: int, kind: str) -> dict:
         end = int(rng.integers(int(DAYS * 0.6), DAYS))
     if kind not in ("trending", "declining") and rng.random() < 0.08:
         launch = int(rng.integers(1, int(DAYS * 0.4)))  # some later launches in every type
-    return dict(
-        sku_id=sku, name=f"{cat.name[:3].upper()}-{sku:04d}", category=cat.name, category_id=ci,
-        true_type=kind, bulky=bulky, price=round(price, 2), unit_cost=round(price * (1 - margin), 2),
-        margin=round(margin, 4), volume_l=round(volume, 3), weight_kg=round(volume * cat.density_kg_l * rng.lognormal(0, 0.2), 3),
-        base_rate=rate, launch_day=launch, end_day=end,
-        season_amp=float(rng.uniform(0.6, 0.95)) if kind == "seasonal" else float(rng.uniform(0.0, 0.15)),
-        season_peak=int((cat.seasonal_peak_doy + rng.normal(0, 20)) % 365),
-        growth=float(rng.uniform(4, 10)) if kind == "trending" else 0.0,
-        decay=float(rng.uniform(1.5, 3.5)) if kind == "declining" else 0.0,
-    )
+    return {
+        "sku_id": sku, "name": f"{cat.name[:3].upper()}-{sku:04d}", "category": cat.name, "category_id": ci,
+        "true_type": kind, "bulky": bulky, "price": round(price, 2), "unit_cost": round(price * (1 - margin), 2),
+        "margin": round(margin, 4), "volume_l": round(volume, 3), "weight_kg": round(volume * cat.density_kg_l * rng.lognormal(0, 0.2), 3),
+        "base_rate": rate, "launch_day": launch, "end_day": end,
+        "season_amp": float(rng.uniform(0.6, 0.95)) if kind == "seasonal" else float(rng.uniform(0.0, 0.15)),
+        "season_peak": int((cat.seasonal_peak_doy + rng.normal(0, 20)) % 365),
+        "growth": float(rng.uniform(4, 10)) if kind == "trending" else 0.0,
+        "decay": float(rng.uniform(1.5, 3.5)) if kind == "declining" else 0.0,
+    }
 
 
 def type_share(ci: int) -> np.ndarray:
@@ -191,8 +191,8 @@ def build_regions_and_customers(p: WorldParams, rng: np.random.Generator) -> tup
     freq = rng.lognormal(np.log(1.5), 1.1, size=p.customers)
     business = rng.random(p.customers) < p.business_share
     signup = np.where(rng.random(p.customers) < 0.6, 1, rng.integers(1, DAYS, size=p.customers))
-    cust = pd.DataFrame(dict(customer_id=np.arange(1, p.customers + 1), region_id=region,
-                             orders_per_year=freq.round(3), business=business, signup_day=signup))
+    cust = pd.DataFrame({"customer_id": np.arange(1, p.customers + 1), "region_id": region,
+                             "orders_per_year": freq.round(3), "business": business, "signup_day": signup})
     return reg, cust
 
 
@@ -211,7 +211,7 @@ def build_bundles(cat: pd.DataFrame, p: WorldParams, rng: np.random.Generator) -
             members.append(int(rng.choice(cross)))
         for s in members:
             free.discard(int(s))
-            rows.append(dict(bundle_id=b, sku_id=int(s)))
+            rows.append({"bundle_id": b, "sku_id": int(s)})
     return pd.DataFrame(rows)
 
 

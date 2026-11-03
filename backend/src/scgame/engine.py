@@ -24,8 +24,9 @@ from __future__ import annotations
 import heapq
 import math
 from collections import defaultdict, deque
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 from .demand import Order, build_orders, daily_demand
 from .scenario import Event, FulfilmentPolicy, RouteSettings, Scenario, ShipMode

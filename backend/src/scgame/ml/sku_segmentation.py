@@ -21,12 +21,25 @@ import pandas as pd
 from joblib import Parallel, delayed
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
-from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score, silhouette_score
+from sklearn.metrics import (
+    adjusted_rand_score,
+    normalized_mutual_info_score,
+    silhouette_score,
+)
 from sklearn.mixture import GaussianMixture
 from sklearn.neighbors import NearestNeighbors
 
 from . import policy_sim as ps
-from .sku_features import FEATURES, _seasonal_strength, GROUP_LABELS, GROUPS, TRAIN_END, build_features, transform, weekly_matrix
+from .sku_features import (
+    FEATURES,
+    GROUP_LABELS,
+    GROUPS,
+    TRAIN_END,
+    _seasonal_strength,
+    build_features,
+    transform,
+    weekly_matrix,
+)
 
 K_RANGE = list(range(2, 11))
 MODELS = ["kmeans", "gmm"]
@@ -284,7 +297,7 @@ def main(world_dir: str, out_dir: str) -> None:
     orders = pd.read_parquet(world / "orders.parquet")
     meta = json.loads((world / "world.json").read_text())
 
-    features, weekly = build_features(lines, orders, skus)
+    features, _weekly = build_features(lines, orders, skus)
     weekly_train, on_sale = weekly_matrix(lines, skus, TRAIN_END)
     weekly_all, _ = weekly_matrix(lines, skus, meta["days"])
     truth_names = skus["true_type"].to_numpy()
@@ -293,7 +306,7 @@ def main(world_dir: str, out_dir: str) -> None:
     print(f"features ready ({time.time() - t0:.0f}s)")
 
     # Unweighted z-scores of all features: used for cluster profiles and naming.
-    full_X, keys = transform(features, GROUPS)
+    full_X, _keys = transform(features, GROUPS)
     group_size = {g: sum(1 for f in FEATURES if f.group == g) for g in GROUPS}
     full_z = full_X * np.array([np.sqrt(group_size[f.group]) for f in FEATURES])
 

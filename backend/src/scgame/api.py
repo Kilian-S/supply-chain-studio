@@ -6,14 +6,13 @@ Run with: uv run uvicorn scgame.api:app --reload
 from __future__ import annotations
 
 import os
+import re
 import uuid
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-
-import re
 
 from .demand import daily_demand, demand_multiplier, history
 from .engine import DecisionError, Engine
