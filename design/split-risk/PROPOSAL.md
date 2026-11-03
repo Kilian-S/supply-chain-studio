@@ -1,6 +1,9 @@
 # Split orders, implementation proposal
 
-Model H from `ML_ROADMAP.md`. Written 3 November 2026 for Kilian's decisions. Nothing is built yet.
+Model H from `ML_ROADMAP.md`. Written 3 November 2026. Kilian asked the same day for a first-principles
+explanation of the models and their design choices, agreed every design choice (section 6a, which
+includes two changes to this proposal) and asked for the model to be built. The page (sections 10 and
+11, decisions 9 to 11) is not yet decided.
 
 Figures come from world v1, seed 7, training set (years 1 to 3) unless stated. To size the problem I ran
 a throwaway prototype of the split simulation (section 4) on year 3 with levels from year 2, for four
@@ -124,7 +127,7 @@ Everything is known at the end of the year before the order. Nothing is computed
 |---|---|
 | Basket | SKUs in the order, units, largest line, bulk line (20 units or more), weight (kg), volume (L), categories in the order, month |
 | Region | Customer region, home FC is central or regional, distance multiplier from the home FC |
-| Listing | Basket SKUs not listed at the home FC (count and share; the plain rule's input), listing share and listing rule of the network, regional FCs open |
+| Listing | Basket SKUs not listed at the home FC (count and share; the plain rule's input), listing share and service level of the network, regional FCs open. The listing rule and the set of sites are not features (design choice X3) |
 | Stock risk | For basket SKUs listed at the home FC, the smallest and mean cover (order-up-to level over expected demand in the order's month over L + R, from last year's monthly pattern), largest CV² and ADI, largest growth over last year, smallest daily demand at that FC, service level. The same for the unlisted SKUs at the FC they would come from |
 | SKU clusters (model J) | Count of basket SKUs per cluster (9), share whose cluster's stocking policy is distributed |
 | Communities (model K) | Distinct communities in the basket, whether a basket community is only partly listed at the home FC, largest lift between two basket SKUs, share of basket SKUs bought alone |
@@ -148,6 +151,42 @@ features are in-sample (a basket's own pairs count towards its lift); validation
 Explanations by SHAP values, computed by LightGBM itself (`pred_contrib`), so no new package.
 
 **Recommendation.** These four. No new dependency (`lightgbm` and scikit-learn are already there).
+
+## 6a. Model design (agreed)
+
+Explained from first principles in the chat of 3 November 2026; Kilian agreed every choice below.
+X3 and E5 change or extend the proposal above.
+
+| # | Choice | Why |
+|---|---|---|
+| F1 | An example is one order under one network in one year | The label exists per order; SKU risk is the sum of its orders' probabilities, so both answers agree |
+| F2 | Only orders with at least two SKUs | Single-SKU orders cannot split and would flatter every score |
+| F3 | Output a probability, no threshold chosen | A planner sums probabilities; a threshold only to compare with the rule at its recall |
+| F4 | Labels from the simulation over many random networks | The model must answer for networks it has not seen |
+| D1 | At most 20,000 random multi-SKU orders per network and year in training | More networks teach more than more orders per network |
+| D2 | No class rebalancing or weights | Reweighting moves probabilities away from true frequencies |
+| X1 | A fixed-length vector per order from counts, smallest, largest and mean over its SKUs | One stock-out is enough, so the weakest SKU carries the signal; combining line models would bring back the independence assumption |
+| X2 | Engineered stocking features, mainly cover (order-up-to level over expected demand during lead time and review in the order's month) | Gives the stocking physics in one number |
+| X3 | Describe the order's situation, never the network's name; listing rule and site set are not features | Names let the model memorise rules that do not carry over to a planner's own rule |
+| X4 | The replay's in-stock rates are not a feature | Keeps the comparison clean and the classifier independent of the simulator |
+| X5 | Models J and K as committed | Fitted on years 1 to 3, settings chosen on year 4, no test information |
+| X6 | Logistic regression on log-transformed, standardised features with one-hot categories; LightGBM on raw values with native categories | Linear models are scale sensitive; trees are not |
+| M1 | Plain rule with two probabilities from training | A 0/1 rule would have infinite log loss |
+| M2 | Replay simulation, in-stock rates per FC, SKU and month from last year, independence assumed | The natural operations research rival, past data only |
+| M3 | Logistic regression, L2 penalty from six values, no hand-built interactions | Interactions are what trees should add |
+| M4 | LightGBM, leaves 15 or 63, rows per leaf 100 or 1,000, sampling 0.8 or 1.0, read at 250, 500 and 1,000 trees, learning rate 0.05 | Standard controls; tree counts read from one fit |
+| M5 | No neural network | Boosted trees are the standard strong choice for tables; model B shows a network |
+| M6 | No monotone constraints | Stock-outs can cancel splits |
+| M7 | SHAP values from LightGBM (`pred_contrib`), summed per feature group | Additive in log-odds, no new package |
+| C1 | Calibration map fitted on validation (year 4) | Training predictions are overconfident |
+| C2 | Isotonic, Platt or none, chosen by log loss with cross-fitting over two halves of the validation networks | The map is chosen on data it was not fitted on |
+| C3 | Calibration checked on the test set only after every choice is fixed | Out-of-sample check |
+| E1 | Choose by log loss | Proper scoring rule, rewards calibration and ranking |
+| E2 | Every split and interval grouped by network | Rows within a network are correlated |
+| E3 | Test networks use FC site sets never seen before | Backs the claim about unseen networks |
+| E4 | Training labels from years 2 and 3, validation year 4, test year 5, no refit | Year 1 has no year before it; a refit would orphan the calibration map |
+| E5 | Intervals on test scores from resampling test networks | Twenty networks is a small sample |
+| E6 | Noise floor from re-simulating with other within-day order sequences | Shows how much of the label is luck, to explain only |
 
 ## 7. Calibrated probabilities
 

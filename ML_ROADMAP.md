@@ -204,8 +204,9 @@ questions fast, H flags risk, O decides, and the simulator checks the decision.
 
 ### H. Risk classification (supervised classification)
 - 3 November 2026. Proposal in `design/split-risk/PROPOSAL.md` (split orders caused by listing or
-  stock-outs, simulated networks, plain rule and replay simulation as baselines), awaiting Kilian's
-  decisions. The notes below are the original outline.
+  stock-outs, simulated networks, plain rule and replay simulation as baselines). Kilian agreed the
+  model design (PROPOSAL section 6a) the same day and asked for the build; the page is not yet decided.
+  The notes below are the original outline.
 - Target: whether an order is split across FCs (or a SKU stocks out) under a planned network.
 - Features: basket composition, customer region, SKU clusters from J, affinity groups from K,
   listing pattern.
