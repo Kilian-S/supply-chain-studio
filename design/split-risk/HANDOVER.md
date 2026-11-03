@@ -242,8 +242,11 @@ uv run python -m scgame.ml.split_risk ../data/world_v1 ../data/models ../data/mo
 The model run takes about 23 minutes on 4 cores (1,379 s, `O.runtime_s`), most of it the eight LightGBM
 fits on 2.4 million rows (about 2 minutes each).
 
-Reproducibility. A second run from the same world (rebuild check, section 11) is compared with the
-committed outputs.
+Reproducibility, checked. A second full run on the same world (1,395 s) gave identical `skus.json` and
+`examples.json`, the same choices and the same test scores. `overview.json` differed only in float
+rounding, from the seventh significant digit on, in one unchosen LightGBM setting's validation scores, the
+SHAP means and the business-check means. The world itself was generated in this session, not from a fresh
+clone.
 
 Checks.
 
