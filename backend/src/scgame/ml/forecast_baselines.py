@@ -49,10 +49,16 @@ def _fit_one(args: tuple[np.ndarray, int]) -> dict | None:
             if not np.isfinite(r.aic):
                 continue
             if best is None or r.aic < best[0]:
-                phi = r.params.get("damping_trend", np.nan)
+                p = r.params
+                phi = p.get("damping_trend", np.nan)
+                fixed = {"smoothing_level": p["smoothing_level"], "smoothing_seasonal": p["smoothing_seasonal"]}
+                init = {"initial_level": p["initial_level"], "initial_seasonal": np.asarray(p["initial_seasons"]).copy()}
+                if trend:
+                    fixed.update(smoothing_trend=p["smoothing_trend"], damping_trend=p["damping_trend"])
+                    init["initial_trend"] = p["initial_trend"]
                 best = (r.aic, {"start": start, "level": r.level.copy(), "trend": np.asarray(r.trend if trend else np.zeros(len(x))).copy(),
-                                    "season": r.season.copy(), "phi": float(phi) if trend and np.isfinite(phi) else 0.0,
-                                    "sigma2": float(np.mean(r.resid ** 2)), "has_trend": trend is not None})
+                                "season": r.season.copy(), "phi": float(phi) if trend and np.isfinite(phi) else 0.0,
+                                "sigma2": float(np.mean(r.resid ** 2)), "has_trend": trend is not None, "fixed": fixed, "init": init})
     return None if best is None else best[1]
 
 
@@ -62,6 +68,28 @@ def fit_ets(y: np.ndarray, T: int, workers: int = 4) -> list[dict | None]:
     jobs = [(y[i, :T], int(fs[i])) for i in range(len(y))]
     with Pool(workers) as pool:
         return pool.map(_fit_one, jobs, chunksize=32)
+
+
+def _extend_one(args: tuple[dict | None, np.ndarray]) -> dict | None:
+    f, y = args
+    if f is None:
+        return None
+    x = np.log1p(y[f["start"]:])
+    if len(x) < ETS_MIN_MONTHS:
+        return None
+    trend = "add" if f["has_trend"] else None
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        r = ExponentialSmoothing(x, trend=trend, damped_trend=f["has_trend"], seasonal="add", seasonal_periods=12,
+                                 initialization_method="known", **f["init"]).fit(optimized=False, **f["fixed"])
+    return dict(f, level=r.level.copy(), trend=np.asarray(r.trend if trend else np.zeros(len(x))).copy(), season=r.season.copy())
+
+
+def ets_extend(fits: list[dict | None], y: np.ndarray, T: int, workers: int = 4) -> list[dict | None]:
+    """The fitted models run on, with their parameters fixed, over months up to T (to forecast from a later
+    origin without refitting). Reproduces the fitted states exactly over the fitting window."""
+    with Pool(workers) as pool:
+        return pool.map(_extend_one, [(f, y[i, :T]) for i, f in enumerate(fits)], chunksize=64)
 
 
 def ets_forecast(fits: list[dict | None], y: np.ndarray, origin: int, horizon: int) -> tuple[np.ndarray, np.ndarray]:

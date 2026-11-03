@@ -37,12 +37,15 @@ class World:
     bulk: np.ndarray  # same shape, units in bulk lines
 
 
-def load(world_dir: str | Path) -> World:
+def load(world_dir: str | Path, future_dir: str | Path | None = None) -> World:
+    """Years 1 to 5 from `world_dir`, years 6 to 10 from `future_dir` (default the world directory, the
+    first future)."""
     world = Path(world_dir)
-    skus = pd.read_parquet(world / "skus_future.parquet").reset_index(drop=True)
+    future = Path(future_dir) if future_dir is not None else world
+    skus = pd.read_parquet(future / "skus_future.parquet").reset_index(drop=True)
     skus["category_id"] = skus["category"].map({c.name: i for i, c in enumerate(CATEGORIES)})
     regions = pd.read_parquet(world / "regions.parquet")
-    lines = pd.concat([pd.read_parquet(world / "order_lines.parquet"), pd.read_parquet(world / "order_lines_future.parquet")])
+    lines = pd.concat([pd.read_parquet(world / "order_lines.parquet"), pd.read_parquet(future / "order_lines_future.parquet")])
     row = np.full(int(skus["sku_id"].max()) + 1, -1)
     row[skus["sku_id"].to_numpy()] = np.arange(len(skus))
     r = lines["region_id"].to_numpy() - 1

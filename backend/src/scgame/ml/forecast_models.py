@@ -184,13 +184,13 @@ def repeat_rows(w: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 
 
 def _train_seed(args) -> list[MLPRegressor]:
-    X, Y, w, setting, seed = args
+    X, Y, w, setting, seed, epochs = args
     net = MLPRegressor(hidden_layer_sizes=(setting["width"], setting["width"]), alpha=setting["alpha"], loss=setting["loss"],
                        learning_rate_init=MLP_LR, batch_size=256, random_state=seed, shuffle=True)
     snaps = []
-    for epoch in range(1, max(MLP_EPOCHS) + 1):
+    for epoch in range(1, max(epochs) + 1):
         net.partial_fit(X, Y, sample_weight=w)
-        if epoch in MLP_EPOCHS:
+        if epoch in epochs:
             snaps.append(copy.deepcopy(net))
     return snaps
 
@@ -208,9 +208,9 @@ class MlpModel:
 
 
 def fit_mlp(y: np.ndarray, bulk: np.ndarray, meta: pd.DataFrame, static: pd.DataFrame, fit_end: int, setting: dict,
-            workers: int = 4) -> dict[int, MlpModel]:
+            workers: int = 4, epochs: tuple[int, ...] = MLP_EPOCHS) -> dict[int, MlpModel]:
     """Five networks from different random starts (C6), with snapshots after each epoch count in
-    MLP_EPOCHS. Returns one averaged model per epoch count."""
+    `epochs`. Returns one averaged model per epoch count."""
     win = training_windows(y, bulk, fit_end)
     tr = np.nonzero(win.ok)[0]
     inputs = MlpInputs()
@@ -219,14 +219,14 @@ def fit_mlp(y: np.ndarray, bulk: np.ndarray, meta: pd.DataFrame, static: pd.Data
     w = w / w[tr].mean()
     idx, wr = repeat_rows(w[tr])
     rows = tr[idx]
-    jobs = [(X[rows], win.target[rows], wr, setting, seed) for seed in range(MLP_SEEDS)]
+    jobs = [(X[rows], win.target[rows], wr, setting, seed, tuple(epochs)) for seed in range(MLP_SEEDS)]
     with ProcessPoolExecutor(workers) as ex:
         runs = list(ex.map(_train_seed, jobs))
-    return {e: MlpModel([run[i] for run in runs], inputs, static, dict(setting, epochs=e)) for i, e in enumerate(MLP_EPOCHS)}
+    return {e: MlpModel([run[i] for run in runs], inputs, static, dict(setting, epochs=e)) for i, e in enumerate(epochs)}
 
 
-def in_sample_year(model, y: np.ndarray, bulk: np.ndarray, origins: list[int]) -> np.ndarray:
-    """One-year-ahead forecasts at past origins (series, origin, 12), for the error samples. Series that
+def one_year_forecasts(model, y: np.ndarray, bulk: np.ndarray, origins: list[int]) -> np.ndarray:
+    """One-year-ahead forecasts from each origin (series, origin, 12), reading months up to the origin only. Series that
     fall back at an origin get seasonal naive there."""
     out = np.zeros((y.shape[0], len(origins), 12))
     for j, T in enumerate(origins):

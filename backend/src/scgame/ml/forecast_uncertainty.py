@@ -1,14 +1,16 @@
 """Uncertainty and coherence for the demand forecast: sample paths from past errors, reconciliation,
 quantiles and the scores.
 
-Past errors are one-year-ahead errors at rolling origins inside the fitting window, as log((y + 1) /
-(forecast + 1)) per series and month. Each block (one origin, all series, twelve months) splits into a
-level error (the block's mean per series) and month noise (the rest, stored by calendar month so a
-January draws January noise). Level errors and each calendar month's noise are centred per series over
-the origins, so the paths add
-spread around the mean forecast and no drift of their own. A sample path draws one block per forecast
-year for all series together; level errors add up over the years, month noise does not. A width factor
-k, chosen on the validation set (one for the upper levels, one for the SKU levels), scales both.
+Past errors are out of sample. Each method is refitted at rolling origins inside the fitting window and
+forecasts one year from each origin; the error is log((y + 1) / (forecast + 1)) per series and month, for
+the months that fall inside the fitting window (origins near its end see only part of their year). Each
+origin's block splits into a level error (the mean over its months, kept only when at least
+MIN_LEVEL_MONTHS are observed) and month noise (the rest, stored by calendar month). Level errors and
+each calendar month's noise are centred per series, so the paths add spread around the mean forecast and
+no drift of their own. A sample path draws, for every forecast year, one origin's level error and, for
+every month, one origin's noise for that calendar month, each for all series together; level errors add
+up over the years, month noise does not. A width factor k, chosen on the validation set (one for the
+upper levels, one for the SKU levels), scales both.
 """
 
 from __future__ import annotations
@@ -19,44 +21,63 @@ import numpy as np
 
 QUANTILES = (0.1, 0.5, 0.9)
 OFFSET = 1.0  # units added before taking logs, so empty months have an error
+MIN_LEVEL_MONTHS = 6  # an origin with fewer observed months gives noise only, not a level error
 
 
 @dataclass
 class ErrorBlocks:
-    level: np.ndarray  # (origin, series), centred per series over the origins
-    noise: np.ndarray  # (origin, series, 12) by calendar month (0 = January)
+    level: np.ndarray  # (origins with a level error, series), centred per series
+    noise: list[np.ndarray]  # by calendar month (0 = January): (observations, series), centred per series
 
 
-def error_blocks(actual: np.ndarray, forecast: np.ndarray, origins: list[int]) -> ErrorBlocks:
-    """`actual` and `forecast` are (series, origin, 12), months T+1..T+12 for each origin T."""
+def error_blocks(actual: np.ndarray, forecast: np.ndarray, origins: list[int], observed: list[int]) -> ErrorBlocks:
+    """`actual` and `forecast` are (series, origin, 12), months T+1..T+12 for each origin T; `observed[j]`
+    is how many of those months lie inside the fitting window (the rest are ignored)."""
     r = np.log((actual + OFFSET) / (forecast + OFFSET))
-    lvl = r.mean(axis=2)  # (series, origin)
-    noise = r - lvl[:, :, None]
-    cal = np.empty_like(noise)
-    for j, T in enumerate(origins):
-        months = (T + np.arange(12)) % 12  # calendar month of months T+1..T+12 (month m is calendar (m - 1) % 12)
-        cal[:, j, months] = noise[:, j]
-    lvl = lvl - lvl.mean(axis=1, keepdims=True)
-    cal = cal - cal.mean(axis=1, keepdims=True)  # each calendar month's noise centred over the origins too
-    return ErrorBlocks(level=lvl.T.copy(), noise=np.transpose(cal, (1, 0, 2)).copy())
+    n = r.shape[0]
+    levels, noise = [], [[] for _ in range(12)]
+    for j, (T, m) in enumerate(zip(origins, observed)):
+        if m < MIN_LEVEL_MONTHS:
+            continue
+        block = r[:, j, :m]
+        lvl = block.mean(axis=1)
+        levels.append(lvl)
+        for h in range(m):
+            noise[(T + h) % 12].append(block[:, h] - lvl)  # month T+h+1 is calendar month (T+h) % 12
+    level = np.array(levels).reshape(-1, n)
+    level = level - level.mean(axis=0, keepdims=True)
+    cal = []
+    for c in range(12):
+        arr = np.array(noise[c]).reshape(-1, n) if noise[c] else np.zeros((1, n))
+        cal.append(arr - arr.mean(axis=0, keepdims=True))
+    return ErrorBlocks(level=level, noise=cal)
 
 
-def draw_origins(n_origins: int, years: int, n_paths: int, rng: np.random.Generator) -> np.ndarray:
-    return rng.integers(0, n_origins, size=(n_paths, years))
+def sub_blocks(b: ErrorBlocks, idx: np.ndarray) -> ErrorBlocks:
+    return ErrorBlocks(b.level[:, idx], [c[:, idx] for c in b.noise])
 
 
-def sample_paths(mean: np.ndarray, blocks: ErrorBlocks, draws: np.ndarray, k: float, origin: int) -> np.ndarray:
-    """Paths (path, series, months) around mean forecasts (series, months T+1..) from forecast origin T,
-    with the drawn origins."""
-    n_paths, years = draws.shape
+def draw_origins(blocks: ErrorBlocks, years: int, n_paths: int, rng: np.random.Generator) -> dict[str, np.ndarray]:
+    """For every path and forecast year, one level error; for every path, year and calendar month, one noise
+    observation. Shared by all series (and by every subset of them), so the paths stay joint."""
+    level = rng.integers(0, len(blocks.level), size=(n_paths, years))
+    noise = np.stack([rng.integers(0, len(blocks.noise[c]), size=(n_paths, years)) for c in range(12)], axis=2)
+    return {"level": level, "noise": noise}
+
+
+def sample_paths(mean: np.ndarray, blocks: ErrorBlocks, draws: dict[str, np.ndarray], k: float, origin: int) -> np.ndarray:
+    """Paths (path, series, months) around mean forecasts (series, months T+1..) from forecast origin T."""
+    n_paths, years = draws["level"].shape
     n, H = mean.shape
     out = np.empty((n_paths, n, H), dtype=np.float32)
     cum = np.zeros((n_paths, n), dtype=np.float32)
     for j in range(min(years, H // 12)):
-        o = draws[:, j]
-        cum += blocks.level[o]
-        months = (origin + 12 * j + np.arange(12)) % 12
-        logm = k * (cum[:, :, None] + blocks.noise[o][:, :, months])
+        cum += blocks.level[draws["level"][:, j]]
+        noise = np.empty((n_paths, n, 12), dtype=np.float32)
+        for m in range(12):
+            c = (origin + 12 * j + m) % 12
+            noise[:, :, m] = blocks.noise[c][draws["noise"][:, j, c]]
+        logm = k * (cum[:, :, None] + noise)
         out[:, :, 12 * j:12 * (j + 1)] = (mean[None, :, 12 * j:12 * (j + 1)] + OFFSET) * np.exp(logm) - OFFSET
     return np.maximum(out, 0.0)
 
