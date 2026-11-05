@@ -1,0 +1,3 @@
+warning: The `UV_NATIVE_TLS` environment variable is deprecated and will be removed in a future release. Use `UV_SYSTEM_CERTS` instead.
+rolling, first future: 11,895,645 (281s)
+rolling, second future: 12,350,226 (516s)
