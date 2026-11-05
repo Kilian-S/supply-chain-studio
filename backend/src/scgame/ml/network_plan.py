@@ -155,8 +155,10 @@ def futures(world: Path, out: Path) -> dict:
     for name, sub in (("first", world), ("second", world / df.SECOND_FUTURE)):
         w = df.ds.load(world, sub)
         realised = w.units.sum(axis=1)[:, 60:120]
-        reps = np.load(sub / "truth_replications.npz")["units"]  # (rep, region, sku, months 37..120)
-        existing = reps.sum(axis=2)[:, :, 24:84]
+        z = np.load(sub / "truth_replications.npz")  # units (rep, region, sku, month), months 37..120
+        first = int(np.searchsorted(z["months"], 61))
+        assert z["months"][first] == 61 and len(z["months"]) - first == MONTHS
+        existing = z["units"].sum(axis=2)[:, :, first:first + MONTHS]
         m_reps = mk[f"{name}_replications"].sum(axis=2).reshape(-1, 3, MONTHS)
         m_real = mk[f"{name}_realised"].sum(axis=1).reshape(3, MONTHS)
         res[name] = {"replications": np.concatenate([existing, m_reps], axis=1).astype(float),
@@ -381,9 +383,11 @@ def main(world_dir: str, models_dir: str, out_dir: str) -> None:
     net = network(world)
     game = cost_terms(net)
     b = dict(np.load(out / "b_paths.npz"))
-    paths = {}
+    paths, negative = {}, {}
     for key in ("nn", "ets"):
-        paths[key] = np.concatenate([b[f"{key}_region"].astype(float), market_paths(world, models, b, key, net)], axis=1)  # (1000, 11, 60)
+        reg = b[f"{key}_region"].astype(float)
+        negative[key] = int((reg < 0).sum())  # B's MinT-reconciled ETS paths dip below zero in a few region-months
+        paths[key] = np.concatenate([np.maximum(reg, 0.0), market_paths(world, models, b, key, net)], axis=1)  # (1000, 11, 60)
     fut = futures(world, out)
     log("inputs ready")
     yr = slice(12, 60)  # months of years 7 to 10
@@ -395,7 +399,9 @@ def main(world_dir: str, models_dir: str, out_dir: str) -> None:
     s_check = []
     for S, p in zip(S_GRID, solve_all([(paths["nn"][:S, :, yr], net, game) for S in S_GRID])):
         rows = evaluate_many(pool, p["K"], oos)
-        s_check.append({"S": S, "in_sample": p["objective"], "out_of_sample": summarise(p, rows, game)["expected"], "plan": plan_payload(p)})
+        ins = evaluate_many(pool, p["K"], paths["nn"][:S])  # the same five-year cost on the plan's own paths
+        s_check.append({"S": S, "in_sample": summarise(p, ins, game)["expected"], "out_of_sample": summarise(p, rows, game)["expected"],
+                        "objective_years_7_10": p["objective"], "plan": plan_payload(p)})
         log(f"S = {S}: in-sample {p['objective']:,.0f}, out-of-sample {s_check[-1]['out_of_sample']:,.0f}, {p['seconds']}s")
     ref = s_check[-1]["out_of_sample"]
     S_chosen = next(c["S"] for c in s_check if c["out_of_sample"] <= ref * (1 + S_TOLERANCE))
@@ -473,6 +479,7 @@ def main(world_dir: str, models_dir: str, out_dir: str) -> None:
         "wait_and_see": {"expected": float(np.mean(ws)), "per_replication": ws},
         "ranges": {"capacity_cost_ratio": rho_range, "opening_cost": opening_range},
         "b_check": b_check(b, world),
+        "negative_path_cells_clipped": negative,
         "runtime_s": round(time.time() - t0, 1),
     }
     (out / "overview.json").write_text(json.dumps(overview, separators=(",", ":")))
