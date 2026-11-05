@@ -186,12 +186,45 @@ questions fast, H flags risk, O decides, and the simulator checks the decision.
   10).
 
 ### C. New-region demand (supervised regression, cold start)
-- Training data: existing regions' demand against region features (population, income, distance
-  to the nearest FC, urbanisation, category affinities).
-- Models: regularised linear regression as a readable baseline, then gradient boosting; leave-one-
-  region-out validation; prediction intervals.
-- Output: expected demand and uncertainty for candidate regions and sites, feeding O.
-- Open points: how many regions are needed to train credibly (affects the world size).
+- Built 3 November 2026 (code `backend/src/scgame/ml/region_sim.py` and `region_demand.py`, outputs in
+  `data/models/new-region-demand/`). No page yet. Proposal `design/new-region-demand/PROPOSAL.md`, build and
+  rebuild `HANDOVER.md` in the same folder.
+- **Question.** Yearly units per category of a region before its first order, from its features and the
+  existing regions' history; months and SKUs follow the network's mix.
+- **Data.** Example = region × category; label = log of units per 1,000 inhabitants over the network's
+  (index); features log income, urban share, island, log population (population also the exposure); not
+  the generator's online adoption or customer share, customer counts or distance to an FC. Bulk orders in
+  the label or added at the network average, chosen on validation.
+- **Methods.** Population share (baseline), nearest analogues (kNN), log-linear ridge regression,
+  LightGBM; 109 settings. Network level in the target year = last year repeated.
+- **Split.** Leave one region out (fit on 7 regions' years 1 to 3, score the eighth's year 4) to choose
+  everything; refit on the 8 regions' years 1 to 4; test once on 30 simulated new regions' year 5 (20
+  inside the training ranges, 10 outside), made with the generator's process, existing regions unchanged.
+- **Uncertainty.** Log-normal from the held-out errors, a region part (t, 7 degrees of freedom) and a cell
+  part, plus count-like month noise; 1,000 draws; no tuned width.
+- **Ground truth.** 200 replications per region; noise floor, calibration, learned against true
+  elasticities; never used to choose.
+- **Business check.** One-year FC capacity for each new region at the game's cost ratio, full range shown.
+- **Headline.** Log-linear regression chosen (validation 0.103, noise floor 0.088). On the test it ties
+  nearest analogues (0.110 against 0.111, paired difference −0.001 with standard error 0.007; nearest
+  analogues better on the continent, worse on islands), ahead of LightGBM 0.127 and population share 0.155
+  (noise floor 0.081). It under-forecasts by 7.8% because the network grew from year 4 to 5 (0.089 with the
+  realised network). Cell bands too wide (87% coverage of an 80% band). Capacity plan 2 to 3% above the
+  ground-truth plan across all cost ratios, population share 20%; the P50-only plan matches ours only near
+  the game's ratio. Learning curve 0.182 with 2 training regions, 0.103 with 7, flattening.
+- **Independent review** (3 November). Found two code faults, fixed in run 2 and disclosed (`HANDOVER.md`
+  section 7). Cell errors were counted twice in region-total bands, and LightGBM never split on category.
+  Point forecasts and the chosen method did not change. Wording and missing disclosures fixed.
+- **Kilian's decisions.** 3 November. All thirteen recommendations of the proposal (section 13) and the
+  model design D1 to D14 (section 4a), after a first-principles explanation; urban share kept as a
+  feature after asking where it comes from.
+- **Decided while working alone, for review** (`HANDOVER.md` section 9). Month noise for the capacity
+  check, 109 settings rather than the estimated 60, out-of-sample validation coverage, units-weighted
+  error parts, LightGBM details for 56 rows (including the categorical settings of run 2), the committed
+  simulation.
+- **Open.** How to present the test tie with nearest analogues, whether nearest analogues should get an
+  island on or off setting (the asymmetry the review found), the over-wide cell bands, which network
+  forecast feeds O, the page (no frontend, no `card.json`).
 
 ### A. What-if surrogate (supervised regression, neural network)
 - Labels from the simulator: thousands of variants of network and capacity (which FCs, how many
