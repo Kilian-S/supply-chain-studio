@@ -26,6 +26,8 @@ from __future__ import annotations
 import json
 import sys
 import time
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
 from multiprocessing import Pool, get_context
 from pathlib import Path
 
@@ -55,10 +57,11 @@ OPENING_SHARE = 500_000 / 5 / 1_450  # the game's factory fixed cost per year ov
 KEEP = {1.0: 1.0, 1.4: 1 - ps.SLOW_DELIVERY_LOSS["same_landmass"], 2.2: 1 - ps.SLOW_DELIVERY_LOSS["cross_water"]}
 GAP = 1e-3
 TIME_LIMIT = 1200.0
-RANGE_LIMIT = 300.0  # time limit per programme in the cost ranges; the gap reached is reported
+RANGE_LIMIT = 120.0  # time limit per programme in the cost ranges; the gap reached is reported
 SEED = 29
 PLANS = ["Do nothing", "Expand the busiest FC", "P50 plan", "P90 plan", "Our plan"]
-WORKERS = 4
+WORKERS = 4  # evaluation (small linear programmes)
+SOLVE_WORKERS = 2  # mixed-integer programmes in parallel (memory)
 
 
 # =================================================================================================
@@ -364,10 +367,16 @@ def _solve_job(args):
 
 
 def solve_all(jobs: list[tuple[np.ndarray, dict, dict]], limit: float = TIME_LIMIT, gap: float = GAP) -> list[dict]:
-    """Independent programmes in parallel processes (HiGHS runs each on one thread)."""
-    # spawn, not fork: a process forked after HiGHS has started threads in the parent can hang
-    with get_context("spawn").Pool(WORKERS) as sp:
-        return sp.map(_solve_job, [(D, net, costs, limit, gap) for D, net, costs in jobs], chunksize=1)
+    """Independent programmes in parallel processes (HiGHS runs each on one thread). Spawned, not forked (a
+    process forked after HiGHS has started threads in the parent can hang), two at a time (a large programme
+    takes up to 5 GB), and a worker that dies raises instead of leaving the map waiting; its jobs are then
+    solved here, one by one."""
+    args = [(D, net, costs, limit, gap) for D, net, costs in jobs]
+    try:
+        with ProcessPoolExecutor(SOLVE_WORKERS, mp_context=get_context("spawn")) as ex:
+            return list(ex.map(_solve_job, args))
+    except BrokenProcessPool:
+        return [_solve_job(a) for a in args]
 
 
 def plan_payload(p: dict) -> dict:
