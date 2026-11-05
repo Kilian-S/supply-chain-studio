@@ -277,6 +277,12 @@ questions fast, H flags risk, O decides, and the simulator checks the decision.
 - 5 November 2026. Proposal `design/network-plan/PROPOSAL.md`; Kilian decided its 15 points the same day
   (section 14). Region totals per month, one capacity per FC; a two-stage stochastic MILP by sample average
   approximation (HiGHS through scipy); B's paths written by O from B's code; three new markets from C;
-  checked on B's replications and B's second future. Build under way on `claude/model-o`.
+  checked on B's replications and B's second future. Built 5 November on `claude/model-o`
+  (`network_paths.py`, `network_plan.py`, outputs in `data/models/network-plan/`, handover
+  `design/network-plan/HANDOVER.md`, independent review `review-truth-r1.md`).
+- **Headline** (game costs, first future). Every regional FC opens in year 7; our plan costs $11.99M over
+  five years, 1.4% above the ground-truth plan and 24% below doing nothing; the P50 plan (+0.8%) and the ETS
+  plan (+0.5%) do slightly better, because B's late years and the new markets (by 11 to 35%) are
+  over-forecast. The rolling plan (extension, revised each year) is the best forecast-based plan (+0.65%).
 - Open points (original): level of detail (categories or SKUs); stochastic or robust formulation. Both
   decided above.
