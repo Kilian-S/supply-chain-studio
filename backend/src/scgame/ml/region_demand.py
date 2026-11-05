@@ -33,6 +33,8 @@ from pathlib import Path
 for _var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"):
     os.environ.setdefault(_var, "1")
 
+# The imports below must follow the thread settings above, hence E402.
+# ruff: noqa: E402
 import lightgbm as lgb
 import numpy as np
 import pandas as pd

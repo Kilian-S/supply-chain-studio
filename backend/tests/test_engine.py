@@ -208,10 +208,12 @@ def test_runs_are_deterministic_for_a_seed():
     root = pathlib.Path(__file__).resolve().parents[2] / "scenarios"
     sc = S.load(root / "classic-network.json")
     a, b = Engine(sc, seed=3), Engine(sc, seed=3)
-    a.run(); b.run()
+    a.run()
+    b.run()
     assert a.summary() == b.summary()
     # Daily demand totals equal the recorded series whatever the seed.
-    c = Engine(sc, seed=4); c.run()
+    c = Engine(sc, seed=4)
+    c.run()
     assert [r.demand for r in a.records] == [r.demand for r in c.records]
 
 
