@@ -23,6 +23,10 @@ The design agreed with Kilian is in design/network-plan/PROPOSAL.md (sections 1 
 
 from __future__ import annotations
 
+# The programme builder keeps the formulation's symbols (sites I and J, open O, capacity K) and its compact
+# row-by-row constraint lists, so it reads against design/network-plan/HANDOVER.md.
+# ruff: noqa: E741, E743, E702
+
 import json
 import sys
 import time
