@@ -55,6 +55,8 @@ OPENING_SHARE = 500_000 / 5 / 1_450  # the game's factory fixed cost per year ov
 KEEP = {1.0: 1.0, 1.4: 1 - ps.SLOW_DELIVERY_LOSS["same_landmass"], 2.2: 1 - ps.SLOW_DELIVERY_LOSS["cross_water"]}
 GAP = 1e-3
 TIME_LIMIT = 1200.0
+WS_GAP, WS_LIMIT = 0.01, 30.0  # wait-and-see bound: single-future programmes, looser gap and time
+RANGE_LIMIT = 300.0  # time limit per programme in the cost ranges; the gap reached is reported
 SEED = 29
 PLANS = ["Do nothing", "Expand the busiest FC", "P50 plan", "P90 plan", "Our plan"]
 WORKERS = 4
@@ -170,12 +172,12 @@ def futures(world: Path, out: Path) -> dict:
 # The programme
 # =================================================================================================
 
-def solve_plan(D: np.ndarray, net: dict, costs: dict, time_limit: float = TIME_LIMIT) -> dict:
+def solve_plan(D: np.ndarray, net: dict, costs: dict, time_limit: float = TIME_LIMIT, gap: float = GAP) -> dict:
     """Two-stage stochastic MILP over scenarios D (S, 11, 48 months of years 7 to 10). Returns capacity K
     (11, 5 years), open (11, 5), the objective (years 7 to 10) and the solver's report."""
     k_prev = np.zeros(N_SITES)
     k_prev[CENTRAL] = net["k0"]
-    res = solve_years(D, net, costs, k_prev, np.arange(N_SITES) == CENTRAL, time_limit)
+    res = solve_years(D, net, costs, k_prev, np.arange(N_SITES) == CENTRAL, time_limit, gap)
     Kfull = np.zeros((N_SITES, 5))
     Kfull[:, 0] = k_prev
     Kfull[:, 1:] = res.pop("k")
@@ -185,7 +187,8 @@ def solve_plan(D: np.ndarray, net: dict, costs: dict, time_limit: float = TIME_L
     return {"K": Kfull, "open": Ofull, **res}
 
 
-def solve_years(D: np.ndarray, net: dict, costs: dict, k_prev: np.ndarray, open_prev: np.ndarray, time_limit: float = TIME_LIMIT) -> dict:
+def solve_years(D: np.ndarray, net: dict, costs: dict, k_prev: np.ndarray, open_prev: np.ndarray, time_limit: float = TIME_LIMIT,
+                gap: float = GAP) -> dict:
     """The programme for the free years only. D (S, 11, 12 x free years). Capacity starts from k_prev (never
     reduced) and sites open in open_prev stay open. Returns k and o (11, free years)."""
     S = D.shape[0]
@@ -244,7 +247,7 @@ def solve_years(D: np.ndarray, net: dict, costs: dict, k_prev: np.ndarray, open_
     integ[:no] = 1
     t0 = time.time()
     res = milp(cost, constraints=LinearConstraint(A, lo, hi), integrality=integ, bounds=Bounds(lb, ub),
-               options={"mip_rel_gap": GAP, "time_limit": time_limit, "disp": False})
+               options={"mip_rel_gap": gap, "time_limit": time_limit, "disp": False})
     if res.x is None:
         raise RuntimeError(f"MILP failed: {res.message}")
     o = np.round(res.x[:no]).reshape(I - 1, Y)
@@ -357,14 +360,14 @@ def recost(plan: dict, second_stage: list[float], costs: dict) -> float:
 # =================================================================================================
 
 def _solve_job(args):
-    D, net, costs, limit = args
-    return solve_plan(D, net, costs, time_limit=limit)
+    D, net, costs, limit, gap = args
+    return solve_plan(D, net, costs, time_limit=limit, gap=gap)
 
 
-def solve_all(jobs: list[tuple[np.ndarray, dict, dict]], limit: float = TIME_LIMIT) -> list[dict]:
+def solve_all(jobs: list[tuple[np.ndarray, dict, dict]], limit: float = TIME_LIMIT, gap: float = GAP) -> list[dict]:
     """Independent programmes in parallel processes (HiGHS runs each on one thread)."""
     with Pool(WORKERS) as sp:
-        return sp.map(_solve_job, [(D, net, costs, limit) for D, net, costs in jobs], chunksize=1)
+        return sp.map(_solve_job, [(D, net, costs, limit, gap) for D, net, costs in jobs], chunksize=1)
 
 
 def plan_payload(p: dict) -> dict:
@@ -430,7 +433,8 @@ def main(world_dir: str, models_dir: str, out_dir: str) -> None:
             score[fname][name] = {"replications": summarise(p, rows, game), "realised": summarise(p, [real], game)}
         log(f"{fname} future scored")
     # Wait-and-see: the best plan for each scoring replication of the first future, knowing it in advance.
-    ws_plans = solve_all([(D[None, :, yr], net, game) for D in fut["first"]["replications"][list(TRUTH_SCORE)]], limit=120)
+    # A bound for the drawer: each single-future programme to within 1% or 30 seconds, gaps reported.
+    ws_plans = solve_all([(D[None, :, yr], net, game) for D in fut["first"]["replications"][list(TRUTH_SCORE)]], limit=WS_LIMIT, gap=WS_GAP)
     ws = [summarise(p, [_EV_local(net)(p["K"], D)], game)["expected"] for p, D in zip(ws_plans, fut["first"]["replications"][list(TRUTH_SCORE)])]
     log("wait-and-see done")
 
@@ -438,7 +442,7 @@ def main(world_dir: str, models_dir: str, out_dir: str) -> None:
     def ranged(costs_list: list[dict]) -> list[dict]:
         out_rows = []
         names = ("P50 plan", "P90 plan", "Our plan", "Ground-truth plan")
-        solved_r = solve_all([(jobs[name], net, costs) for costs in costs_list for name in names])
+        solved_r = solve_all([(jobs[name], net, costs) for costs in costs_list for name in names], limit=RANGE_LIMIT)
         for ci, costs in enumerate(costs_list):
             row = {"rho": costs["rho"], "F": costs["F"], "plans": {}}
             for name in ("Do nothing", "Expand the busiest FC"):
@@ -447,7 +451,7 @@ def main(world_dir: str, models_dir: str, out_dir: str) -> None:
                 p = solved_r[ci * len(names) + ni]
                 rows = evaluate_many(pool, p["K"], fut["first"]["replications"][list(TRUTH_SCORE)])
                 sm = summarise(p, rows, costs)
-                row["plans"][name] = {"expected": sm["expected"], "fill_rate": sm["fill_rate"], "sites_open": int(p["open"][:, -1].sum()),
+                row["plans"][name] = {"expected": sm["expected"], "fill_rate": sm["fill_rate"], "sites_open": int(p["open"][:, -1].sum()), "gap": p["gap"],
                                       "capacity_year10": float(p["K"][:, -1].sum()), "plan": plan_payload(p)}
             out_rows.append(row)
             log(f"range point rho {costs['rho']:.3f} F {costs['F']:,.0f}")
@@ -476,7 +480,8 @@ def main(world_dir: str, models_dir: str, out_dir: str) -> None:
         "scenario_check": s_check, "chosen_S": S_chosen,
         "plans": {k: plan_payload(v) for k, v in plans.items()},
         "evaluation": {f: {k: {kk: {x: y for x, y in vv.items() if x != "second_stage"} for kk, vv in v.items()} for k, v in s.items()} for f, s in score.items()},
-        "wait_and_see": {"expected": float(np.mean(ws)), "per_replication": ws},
+        "wait_and_see": {"expected": float(np.mean(ws)), "per_replication": ws, "gap_limit": WS_GAP, "time_limit": WS_LIMIT,
+                     "gaps": [p["gap"] for p in ws_plans], "statuses": [p["status"] for p in ws_plans]},
         "ranges": {"capacity_cost_ratio": rho_range, "opening_cost": opening_range},
         "b_check": b_check(b, world),
         "negative_path_cells_clipped": negative,
