@@ -100,14 +100,47 @@ B's growth assumption decides.
 
 | Setting | Candidates | Chosen by | Result |
 |---|---|---|---|
-| Number of scenarios S | 25, 50, 100, 200 | Out-of-sample cost on forecast paths 200 to 999 | (filled after the run) |
+| Number of scenarios S | 25, 50, 100, 200 | Out-of-sample cost on forecast paths 200 to 999 | S = 25. Out-of-sample $13.413M, $13.413M, $13.412M, $13.412M (all within 0.02%); solve 25 s against 550 s for S = 200 |
 
 Fixed in advance, not chosen. The three new markets (rule), the costs (game and year 5), the 0.1% gap, the
 1,000 paths, replications 0 to 99 for the reference and 100 to 199 for scoring, the ranges, seed 29.
 
 ## 6. Headline results and their output fields
 
-(filled after the run)
+From `data/models/network-plan/overview.json` (written `O`, run 1, `run-1.log`) and `rolling.json` (written
+`R`). Costs are five-year totals (years 6 to 10) at the game's costs (capacity $9.04 per unit of monthly
+capacity per year, opening $2,749 per FC per year, ratio 0.78), mean over replications 100 to 199.
+
+| Result | Value | Field |
+|---|---|---|
+| Today's capacity | 40,422 units per month (year 5's busiest month) | `O.costs.k0` |
+| Our plan | Every one of the 10 candidate sites opens in year 7; capacity 80,140 units per month in year 7 rising to 96,628 in year 10 (Calopeia stays at 40,422) | `O.plans["Our plan"]` (K per site and year, open) |
+| Ground-truth plan | The same 11 FCs, 76,714 rising to 79,146 | `O.plans["Ground-truth plan"]` |
+| P50, P90, ETS plans in year 10 | 90,445; 111,269; 85,190 units per month, all 11 FCs | `O.plans.<plan>` |
+| Expand the busiest FC | Calopeia alone, 72,155 rising to 91,232 | `O.plans["Expand the busiest FC"]` |
+| Expected cost, first future | Ground-truth plan $11.82M; ETS plan $11.87M (+0.5%); P50 plan $11.92M (+0.8%); our plan $11.99M (+1.4%); P90 plan $12.32M (+4.2%); expand the busiest FC $14.75M (+24.8%); do nothing $15.78M (+33.5%) | `O.evaluation.first.<plan>.replications.expected` |
+| Expected cost, second future | Ground-truth plan (built on the first future) $12.30M; ETS +0.2%; P50 +0.4%; ours +0.9%; P90 +3.3%; busiest +24.3%; do nothing +39.4% | `O.evaluation.second.<plan>.replications.expected` |
+| Realised futures | Within 0.1% of each plan's expected cost | `O.evaluation.<future>.<plan>.realised.expected` |
+| Our plan against do nothing | $3.79M less over five years on the first future (24%), $4.73M on the second | same |
+| Fill rate | Our plan 97.3%; do nothing 81.9%; busiest FC 94.5% (first future) | `.replications.fill_rate` |
+| Lost sales | $0.71M in every plan that builds, all of it in year 6, before any new capacity exists | `.replications.parts.lost_sales` |
+| Wait and see (each future known in advance) | $11.82M, 0.03% below the ground-truth plan | `O.wait_and_see.expected` |
+| Value of the stochastic solution | Negative. The P50 plan beats our plan by $73k (0.6%) on the first future and $61k on the second | P50 against our plan |
+| Rolling plan (extension) | $11.90M on the first future (+0.65% over the ground-truth plan) and $12.35M on the second (+0.44%), below our fixed plan on both (−$92k, −$53k); year-10 capacity 88,369 on average against 96,628 | `R.first.replications`, `R.second.replications` |
+| Capacity cost ratio range | At ratios 0.1 to 0.56, our plan within 0.5 to 0.8% of the ground-truth plan, P90 1.2 to 2.5%, do nothing 39 to 60%. At 10 every plan keeps the central FC alone. Rows at 1.0, 1.78 and 3.16 are unreliable (below) | `O.ranges.capacity_cost_ratio[]` |
+| Opening cost range | Up to 10 times the game's ($27,493 per FC per year) every plan opens 10 or 11 FCs and our plan stays within 0.9 to 1.4% of the reference; at 30 and 50 times plans open fewer sites, but those rows are unreliable (below) | `O.ranges.opening_cost[]` |
+| Solver gaps in the ranges | The ground-truth plan stopped at the 120 s cap with gaps of 16% (ratio 1.0), 5% (3.16), 2% (1.78), 10 to 25% (opening 10 to 50 times); our plan 5 to 18% at opening 10 to 50 times. Where the reference has a large gap, plans can look better than it (−11% at ratio 1.0), so those rows say nothing about plan quality | `O.ranges.*[].plans.*.gap` |
+| B reproduction check | Bias of the network's mean forecast +1.0, +2.8, +6.5, +13.7, +23.2% (B committed +1.4 … +25.8%) | `O.b_check` |
+
+What it means. At the game's costs every regional FC pays: serving a region from its own FC saves more in
+delivery and slower-delivery losses than the opening cost, which is small next to capacity (as Kilian
+noted). So the decision is about how much capacity, not where. Planning over many futures does not beat
+planning on the median here, because both forecasts behind the plan run high (B's late years, and the new
+markets by 11 to 35%, section 8); hedging against more demand then builds even more capacity that is not
+needed. The ETS plan, built on the damped forecast, comes closest, which says the plan's quality is decided
+by the growth assumption, not by the optimisation. Revising the plan each year as sales arrive (the rolling
+plan) corrects most of the over-forecast and is the best forecast-based plan. Compared with doing nothing,
+every plan that builds saves about a quarter of the five-year cost, almost all from lost sales avoided.
 
 ## 7. Chosen or changed after seeing test results or ground truth
 
@@ -198,3 +231,16 @@ opening is free and capacity cheap, none opens when opening is dear, the central
 pays), that evaluating a plan reproduces the programme's own second stage, that every unit of demand is
 served or lost, that fixed plans never shrink, that the rolling plan keeps what is committed and never
 shrinks, and the committed outputs.
+
+## 11. Extension, the rolling plan
+
+Added after the review, at Kilian's request (PROPOSAL limit 2). `network_plan.rolling` re-solves our plan at
+the end of years 6, 7 and 8 for each scoring replication of both futures and for both realised futures. A
+year's build is committed a year ahead, so each revision fixes capacity up to the next year and re-plans the
+rest. The 25 scenarios are B's and C's paths with each region's level corrected by what it sold in the year
+just observed (observed over forecast, applied to all later months); B is not refitted. Results in
+`rolling.json` (`R`). The first-year factors on the realised first future are 0.99 to 1.04 for the existing
+regions and 0.88 to 0.91 for the new markets (`R.first.realised.revisions`). The rolling plan costs $11.90M
+and $12.35M on the two futures, 0.65% and 0.44% above the ground-truth plan, the lowest of every
+forecast-based plan; it ends year 10 with 88,369 units per month on average. Runtime 516 s. The paths are not
+clipped there (B's network paths have no negative values). The review did not see these results.
