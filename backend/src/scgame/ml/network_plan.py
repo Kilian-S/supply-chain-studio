@@ -171,9 +171,24 @@ def futures(world: Path, out: Path) -> dict:
 def solve_plan(D: np.ndarray, net: dict, costs: dict, time_limit: float = TIME_LIMIT) -> dict:
     """Two-stage stochastic MILP over scenarios D (S, 11, 48 months of years 7 to 10). Returns capacity K
     (11, 5 years), open (11, 5), the objective (years 7 to 10) and the solver's report."""
+    k_prev = np.zeros(N_SITES)
+    k_prev[CENTRAL] = net["k0"]
+    res = solve_years(D, net, costs, k_prev, np.arange(N_SITES) == CENTRAL, time_limit)
+    Kfull = np.zeros((N_SITES, 5))
+    Kfull[:, 0] = k_prev
+    Kfull[:, 1:] = res.pop("k")
+    Ofull = np.zeros((N_SITES, 5), dtype=bool)
+    Ofull[CENTRAL] = True
+    Ofull[:, 1:] = res.pop("o")
+    return {"K": Kfull, "open": Ofull, **res}
+
+
+def solve_years(D: np.ndarray, net: dict, costs: dict, k_prev: np.ndarray, open_prev: np.ndarray, time_limit: float = TIME_LIMIT) -> dict:
+    """The programme for the free years only. D (S, 11, 12 x free years). Capacity starts from k_prev (never
+    reduced) and sites open in open_prev stay open. Returns k and o (11, free years)."""
     S = D.shape[0]
     I = J = N_SITES
-    Y, M = PLAN_YEARS, 12
+    Y, M = D.shape[2] // 12, 12
     xc, uc = unit_costs(net)
     no, nk = (I - 1) * Y, I * Y
     nb = I * J + J
@@ -190,7 +205,7 @@ def solve_plan(D: np.ndarray, net: dict, costs: dict, time_limit: float = TIME_L
     cost[:no] = costs["F"]
     cost[no:no + nk] = costs["c"]
     cost[no + nk:] = np.tile(np.r_[xc.ravel(), uc] / S, blocks)
-    big = float(D.sum(axis=1).max()) * 1.05
+    big = max(float(D.sum(axis=1).max()), float(k_prev.max())) * 1.05  # no FC needs more than all demand, or than it already has
     r_, c_, v_, lo, hi = [], [], [], [], []
     row = 0
     for i in range(1, I):
@@ -219,7 +234,10 @@ def solve_plan(D: np.ndarray, net: dict, costs: dict, time_limit: float = TIME_L
     hi = np.r_[hi, np.zeros(blocks * I), dem.ravel()]
     lb, ub = np.zeros(n), np.full(n, np.inf)
     ub[:no] = 1
-    lb[K(CENTRAL, 0):K(CENTRAL, 0) + Y] = net["k0"]  # today's central capacity is never reduced
+    for i in range(I):
+        lb[K(i, 0)] = k_prev[i]  # capacity already committed is never reduced
+        if i != CENTRAL and open_prev[i]:
+            lb[O(i, 0)] = 1  # an open FC stays open
     integ = np.zeros(n)
     integ[:no] = 1
     t0 = time.time()
@@ -228,15 +246,13 @@ def solve_plan(D: np.ndarray, net: dict, costs: dict, time_limit: float = TIME_L
     if res.x is None:
         raise RuntimeError(f"MILP failed: {res.message}")
     o = np.round(res.x[:no]).reshape(I - 1, Y)
-    k = res.x[no:no + nk].reshape(I, Y) * np.r_[1, o.max(axis=1) > 0][:, None]
-    k = np.maximum.accumulate(np.where(k < 1e-6, 0.0, k), axis=1)
-    Kfull = np.zeros((I, 5))
-    Kfull[CENTRAL, 0] = net["k0"]
-    Kfull[:, 1:] = k
-    Ofull = np.zeros((I, 5), dtype=bool)
-    Ofull[CENTRAL] = True
-    Ofull[1:, 1:] = (o > 0.5) & (k[1:] > 0)  # a site counts as open when it has capacity (with a free opening cost the solver may open empty sites)
-    return {"K": Kfull, "open": Ofull, "objective": float(res.fun), "status": int(res.status), "message": str(res.message),
+    k = res.x[no:no + nk].reshape(I, Y)
+    k = np.maximum.accumulate(np.maximum(np.where(k < 1e-6, 0.0, k), k_prev[:, None]), axis=1)
+    opened = np.zeros((I, Y), dtype=bool)
+    opened[CENTRAL] = True
+    # A site counts as open when it has capacity (with a free opening cost the solver may open empty sites).
+    opened[1:] = ((o > 0.5) & (k[1:] > 0)) | open_prev[1:, None]
+    return {"k": k, "o": opened, "objective": float(res.fun), "status": int(res.status), "message": str(res.message),
             "gap": float(getattr(res, "mip_gap", np.nan) or 0.0), "seconds": round(time.time() - t0, 1), "scenarios": int(S)}
 
 
@@ -483,5 +499,83 @@ def b_check(b: dict, world: Path) -> dict:
     return out
 
 
+# =================================================================================================
+# Extension: the rolling plan (PROPOSAL limit 2), revised each year as demand arrives
+# =================================================================================================
+
+ROLL_OBSERVE = [6, 7, 8]  # at the end of these years the plan for year + 2 onwards is solved again
+
+
+def rolling_plan(R: np.ndarray, P: np.ndarray, net: dict, costs: dict, start: dict) -> dict:
+    """Our plan revised at the end of years 6, 7 and 8 for one future R (11, 60). Capacity up to the next year
+    is committed (a year to build), so each revision fixes years up to year + 1 and solves year + 2 to 10. The
+    scenarios P (S, 11, 60) are B's and C's paths with each region's level corrected by what it actually sold
+    (observed over the current forecast of that year, applied to all later months). B is not refitted."""
+    K, O = start["K"].copy(), start["open"].copy()
+    P = P.copy()
+    revisions = []
+    for year in ROLL_OBSERVE:
+        yi = year - 6
+        obs = R[:, 12 * yi:12 * (yi + 1)].sum(axis=1)
+        fc = P[:, :, 12 * yi:12 * (yi + 1)].sum(axis=2).mean(axis=0)
+        factor = obs / np.maximum(fc, 1.0)
+        P[:, :, 12 * (yi + 1):] *= factor[None, :, None]
+        free = yi + 2  # index of the first year that can still change
+        res = solve_years(P[:, :, 12 * free:], net, costs, K[:, free - 1], O[:, free - 1], time_limit=300)
+        K[:, free:], O[:, free:] = res["k"], res["o"]
+        revisions.append({"year": year, "factor": factor.round(4).tolist(), "seconds": res["seconds"], "status": res["status"]})
+    return {"K": K, "open": O, "revisions": revisions}
+
+
+def _roll_job(args):
+    R, P, net, costs, start = args
+    plan = rolling_plan(R, P, net, costs, start)
+    ev = _EV_local(net)(plan["K"], R)
+    return plan, ev
+
+
+def rolling(world_dir: str, models_dir: str, out_dir: str) -> None:
+    """Runs after `main`: re-creates the inputs, revises our plan on every scoring replication of both futures
+    and on both realised futures, and adds the results to overview.json under `rolling`."""
+    t0 = time.time()
+    world, models, out = Path(world_dir), Path(models_dir), Path(out_dir)
+    ov = json.loads((out / "overview.json").read_text())
+    net = network(world)
+    game = cost_terms(net)
+    b = dict(np.load(out / "b_paths.npz"))
+    P = np.concatenate([b["nn_region"].astype(float), market_paths(world, models, b, "nn", net)], axis=1)[:ov["chosen_S"]]
+    fut = futures(world, out)
+    start = {"K": np.array(ov["plans"]["Our plan"]["K"]), "open": np.array(ov["plans"]["Our plan"]["open"], dtype=bool)}
+    result = {"observe_years": ROLL_OBSERVE, "scenarios": ov["chosen_S"]}
+    with Pool(WORKERS) as pool:
+        for fname in ("first", "second"):
+            Rs = list(fut[fname]["replications"][list(TRUTH_SCORE)]) + [fut[fname]["realised"]]
+            out_rows = pool.map(_roll_job, [(R, P, net, game, start) for R in Rs], chunksize=1)
+            totals, rows, built = [], [], []
+            for plan, ev in out_rows[:-1]:
+                fs = first_stage_cost(plan, game)
+                totals.append(fs["capacity"] + fs["opening"] + ev["delivery"] + ev["slow_delivery"] + ev["lost_sales"])
+                rows.append({**fs, **{k: ev[k] for k in ("delivery", "slow_delivery", "lost_sales", "fill_rate")}})
+                built.append(np.asarray(plan["K"]))
+            plan_r, ev_r = out_rows[-1]
+            fs_r = first_stage_cost(plan_r, game)
+            result[fname] = {
+                "replications": {"expected": float(np.mean(totals)), "p90": float(np.percentile(totals, 90)), "sd": float(np.std(totals)),
+                                 "parts": {k: float(np.mean([r[k] for r in rows])) for k in ("capacity", "opening", "delivery", "slow_delivery", "lost_sales")},
+                                 "fill_rate": float(np.mean([r["fill_rate"] for r in rows])),
+                                 "capacity_mean": np.round(np.mean(built, axis=0), 1).tolist(),
+                                 "sites_open_year10": float(np.mean([(k[:, -1] > 0).sum() for k in built]))},
+                "realised": {"expected": fs_r["capacity"] + fs_r["opening"] + ev_r["delivery"] + ev_r["slow_delivery"] + ev_r["lost_sales"],
+                             "fill_rate": ev_r["fill_rate"], "plan": plan_payload(plan_r), "revisions": plan_r["revisions"]},
+            }
+            print(f"rolling, {fname} future: {result[fname]['replications']['expected']:,.0f} ({time.time() - t0:.0f}s)", flush=True)
+    result["runtime_s"] = round(time.time() - t0, 1)
+    ov["rolling"] = result
+    (out / "overview.json").write_text(json.dumps(ov, separators=(",", ":")))
+
+
 if __name__ == "__main__":
-    main(sys.argv[1], sys.argv[2], sys.argv[3])
+    if sys.argv[1] == "rolling":
+        rolling(sys.argv[2], sys.argv[3], sys.argv[4])
+    else:
+        main(sys.argv[1], sys.argv[2], sys.argv[3])

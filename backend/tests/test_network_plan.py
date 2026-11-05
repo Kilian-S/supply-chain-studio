@@ -93,3 +93,18 @@ def test_outputs():
     assert len(o["ranges"]["capacity_cost_ratio"]) == len(npl.RHO_GRID)
     assert len(o["ranges"]["opening_cost"]) == len(npl.OPENING_MULTIPLES)
     assert not (OUT / "card.json").exists()
+
+
+def test_the_rolling_plan_keeps_what_is_committed_and_never_shrinks():
+    rng = np.random.default_rng(1)
+    net = toy_net(k0=8_000.0)
+    costs = {"c": 9.0, "F": 2_700.0}
+    P = rng.uniform(200, 2_000, size=(3, 11, 60))
+    start = npl.solve_plan(P[:, :, 12:], net, costs)
+    R = P[0] * 1.3  # demand turns out 30% higher everywhere
+    plan = npl.rolling_plan(R, P, net, costs, start)
+    assert np.array_equal(plan["K"][:, :2], start["K"][:, :2])  # years 6 and 7 were committed at the start
+    assert (np.diff(plan["K"], axis=1) >= -1e-9).all()
+    assert (plan["open"] >= start["open"]).all()
+    assert plan["K"][:, -1].sum() >= start["K"][:, -1].sum()  # more demand, at least as much capacity
+    assert [r["year"] for r in plan["revisions"]] == npl.ROLL_OBSERVE
