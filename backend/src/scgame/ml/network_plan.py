@@ -556,20 +556,19 @@ def _roll_job(args):
     return plan, ev
 
 
-def rolling(world_dir: str, models_dir: str, out_dir: str) -> None:
-    """Runs after `main`: re-creates the inputs, revises our plan on every scoring replication of both futures
-    and on both realised futures, and adds the results to overview.json under `rolling`."""
+def rolling(world_dir: str, models_dir: str, out_dir: str, S: int) -> None:
+    """Re-creates the inputs and our plan (S scenarios, the number chosen in `main`), revises the plan on every
+    scoring replication of both futures and on both realised futures, and writes rolling.json."""
     t0 = time.time()
     world, models, out = Path(world_dir), Path(models_dir), Path(out_dir)
-    ov = json.loads((out / "overview.json").read_text())
     net = network(world)
     game = cost_terms(net)
     b = dict(np.load(out / "b_paths.npz"))
-    P = np.concatenate([b["nn_region"].astype(float), market_paths(world, models, b, "nn", net)], axis=1)[:ov["chosen_S"]]
+    P = np.concatenate([b["nn_region"].astype(float), market_paths(world, models, b, "nn", net)], axis=1)[:S]
     fut = futures(world, out)
-    start = {"K": np.array(ov["plans"]["Our plan"]["K"]), "open": np.array(ov["plans"]["Our plan"]["open"], dtype=bool)}
-    result = {"observe_years": ROLL_OBSERVE, "scenarios": ov["chosen_S"]}
-    with get_context("spawn").Pool(WORKERS) as pool:
+    start = solve_plan(P[:, :, 12:], net, game)
+    result = {"observe_years": ROLL_OBSERVE, "scenarios": S, "start_plan": plan_payload(start)}
+    with get_context("spawn").Pool(SOLVE_WORKERS) as pool:
         for fname in ("first", "second"):
             Rs = list(fut[fname]["replications"][list(TRUTH_SCORE)]) + [fut[fname]["realised"]]
             out_rows = pool.map(_roll_job, [(R, P, net, game, start) for R in Rs], chunksize=1)
@@ -592,12 +591,11 @@ def rolling(world_dir: str, models_dir: str, out_dir: str) -> None:
             }
             print(f"rolling, {fname} future: {result[fname]['replications']['expected']:,.0f} ({time.time() - t0:.0f}s)", flush=True)
     result["runtime_s"] = round(time.time() - t0, 1)
-    ov["rolling"] = result
-    (out / "overview.json").write_text(json.dumps(ov, separators=(",", ":")))
+    (out / "rolling.json").write_text(json.dumps(result, separators=(",", ":")))
 
 
 if __name__ == "__main__":
     if sys.argv[1] == "rolling":
-        rolling(sys.argv[2], sys.argv[3], sys.argv[4])
+        rolling(sys.argv[2], sys.argv[3], sys.argv[4], int(sys.argv[5]))
     else:
         main(sys.argv[1], sys.argv[2], sys.argv[3])
