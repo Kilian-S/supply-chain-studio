@@ -24,13 +24,23 @@ State on 2 November 2026, for a new session (local or cloud). Read `CLAUDE.md` f
    communities.
 3. Keyboard access to the matrix and scatter hover read-outs.
 
+## In progress
+
+- **Demand forecast (model B).** Model built, reviewed twice by an independent agent and committed with its
+  outputs (`data/models/demand-forecast/`). Stopped before the page at Kilian's request (3 November 2026);
+  no frontend and no `card.json`. The local session reviews the model and designs the page, starting from
+  `design/demand-forecast/HANDOVER.md` (inputs, method, settings, results with their output fields,
+  disclosures, limits, rebuild commands), then `RESULTS.md` (results and Kilian's open questions) and
+  `PROPOSAL.md` (agreed design, storyline draft, vocabulary). Rebuild with the generator, then
+  `uv run python -m scgame.ml.demand_forecast ../data/world_v1 ../data/models/demand-forecast` (about an
+  hour; it builds years 6 to 10 and the ground truth first).
+
 ## Next
 
-The remaining models, in storyline order, are B (long-range demand forecasting), C (new-region demand),
-A (what-if surrogate), H (risk classification), O (network design MILP). See `ML_ROADMAP.md`,
-section 6. Each needs its implementation discussed with Kilian before building. Prepare a proposal
-(inputs, method, validation on the year 4 and year 5 split, baselines, business check, draft
-storyline under the design rules) and wait for his decisions.
+The remaining models after B, in storyline order, are C (new-region demand), A (what-if surrogate),
+H (risk classification), O (network design MILP). See `ML_ROADMAP.md`, section 6. Each needs its
+implementation discussed with Kilian before building. Prepare a proposal (inputs, method, validation,
+baselines, business check, draft storyline under the design rules) and wait for his decisions.
 
 ## How Kilian works
 

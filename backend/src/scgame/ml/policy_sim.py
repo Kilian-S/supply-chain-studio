@@ -59,7 +59,7 @@ def simulate(test: np.ndarray, estimate: np.ndarray, skus: pd.DataFrame, regions
     test, estimate: (sku, region, day) demand for the simulated year and for the year the
     order-up-to levels are estimated from.
     """
-    n_sku, n_reg, days = test.shape
+    n_sku, _n_reg, days = test.shape
     central = int(np.nonzero(regions["id"].to_numpy() == CENTRAL)[0][0])
     mult = distance_multiplier(regions)
     delivery_lost = np.zeros(n_sku)

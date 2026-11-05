@@ -104,62 +104,81 @@ def _seasonal_profile(peak: int, amplitude: float) -> np.ndarray:
     return shape / shape.mean()
 
 
+def draw_sku(rng: np.random.Generator, sku: int, ci: int, kind: str) -> dict:
+    """One SKU's hidden parameters. The order of random draws is part of world v1, do not reorder."""
+    cat = CATEGORIES[ci]
+    bulky = rng.random() < 0.25
+    volume = cat.volume_l_median * rng.lognormal(0, 0.6) * (3.0 if bulky else 1.0)
+    price = cat.price_median * rng.lognormal(0, 0.5) * (1.6 if bulky else 1.0)
+    margin = rng.uniform(*cat.margin)
+    rate = TYPE_RATE[kind] * rng.lognormal(0, 0.7)
+    launch = 1
+    end = DAYS + 1
+    if kind == "trending":
+        launch = int(rng.integers(1, int(DAYS * 0.55)))
+    if kind == "declining" and rng.random() < 0.4:
+        end = int(rng.integers(int(DAYS * 0.6), DAYS))
+    if kind not in ("trending", "declining") and rng.random() < 0.08:
+        launch = int(rng.integers(1, int(DAYS * 0.4)))  # some later launches in every type
+    return {
+        "sku_id": sku, "name": f"{cat.name[:3].upper()}-{sku:04d}", "category": cat.name, "category_id": ci,
+        "true_type": kind, "bulky": bulky, "price": round(price, 2), "unit_cost": round(price * (1 - margin), 2),
+        "margin": round(margin, 4), "volume_l": round(volume, 3), "weight_kg": round(volume * cat.density_kg_l * rng.lognormal(0, 0.2), 3),
+        "base_rate": rate, "launch_day": launch, "end_day": end,
+        "season_amp": float(rng.uniform(0.6, 0.95)) if kind == "seasonal" else float(rng.uniform(0.0, 0.15)),
+        "season_peak": int((cat.seasonal_peak_doy + rng.normal(0, 20)) % 365),
+        "growth": float(rng.uniform(4, 10)) if kind == "trending" else 0.0,
+        "decay": float(rng.uniform(1.5, 3.5)) if kind == "declining" else 0.0,
+    }
+
+
+def type_share(ci: int) -> np.ndarray:
+    share = TYPE_SHARE.copy()
+    share[1] *= CATEGORIES[ci].seasonal_bias
+    return share / share.sum()
+
+
 def build_catalogue(rng: np.random.Generator) -> pd.DataFrame:
     rows = []
     sku = 0
     for ci, cat in enumerate(CATEGORIES):
-        share = TYPE_SHARE.copy()
-        share[1] *= cat.seasonal_bias
-        share /= share.sum()
-        types = rng.choice(len(TYPES), size=cat.skus, p=share)
+        types = rng.choice(len(TYPES), size=cat.skus, p=type_share(ci))
         for t in types:
             sku += 1
-            kind = TYPES[t]
-            bulky = rng.random() < 0.25
-            volume = cat.volume_l_median * rng.lognormal(0, 0.6) * (3.0 if bulky else 1.0)
-            price = cat.price_median * rng.lognormal(0, 0.5) * (1.6 if bulky else 1.0)
-            margin = rng.uniform(*cat.margin)
-            rate = TYPE_RATE[kind] * rng.lognormal(0, 0.7)
-            launch = 1
-            end = DAYS + 1
-            if kind == "trending":
-                launch = int(rng.integers(1, int(DAYS * 0.55)))
-            if kind == "declining" and rng.random() < 0.4:
-                end = int(rng.integers(int(DAYS * 0.6), DAYS))
-            if kind not in ("trending", "declining") and rng.random() < 0.08:
-                launch = int(rng.integers(1, int(DAYS * 0.4)))  # some later launches in every type
-            rows.append(dict(
-                sku_id=sku, name=f"{cat.name[:3].upper()}-{sku:04d}", category=cat.name, category_id=ci,
-                true_type=kind, bulky=bulky, price=round(price, 2), unit_cost=round(price * (1 - margin), 2),
-                margin=round(margin, 4), volume_l=round(volume, 3), weight_kg=round(volume * cat.density_kg_l * rng.lognormal(0, 0.2), 3),
-                base_rate=rate, launch_day=launch, end_day=end,
-                season_amp=float(rng.uniform(0.6, 0.95)) if kind == "seasonal" else float(rng.uniform(0.0, 0.15)),
-                season_peak=int((cat.seasonal_peak_doy + rng.normal(0, 20)) % 365),
-                growth=float(rng.uniform(4, 10)) if kind == "trending" else 0.0,
-                decay=float(rng.uniform(1.5, 3.5)) if kind == "declining" else 0.0,
-            ))
+            rows.append(draw_sku(rng, sku, ci, TYPES[t]))
     return pd.DataFrame(rows)
 
 
-def daily_rates(cat: pd.DataFrame) -> np.ndarray:
-    """Expected consumer units per day for every SKU (rows) and day (columns), network-wide."""
-    days = np.arange(1, DAYS + 1)
+def expected_rates(cat: pd.DataFrame, days: np.ndarray) -> np.ndarray:
+    """Expected consumer units per day for every SKU (rows) on the given days (columns), network-wide,
+    before `demand_scale`. Optional columns `growth_stop_age` (years) and `stop_day` extend the life cycle
+    beyond year 5 (`scgame.world.future`); without them this is exactly the world v1 process."""
     doy = (days - 1) % 365
     month = np.minimum((doy / 365 * 12).astype(int), 11)
     retail = np.array(RETAIL_SEASON)[month]
-    out = np.zeros((len(cat), DAYS))
+    out = np.zeros((len(cat), len(days)))
+    has_stop_age = "growth_stop_age" in cat.columns
+    has_stop_day = "stop_day" in cat.columns
     for i, s in enumerate(cat.itertuples()):
         r = s.base_rate * retail * _seasonal_profile(s.season_peak, s.season_amp)[doy]
         age = np.clip(days - s.launch_day, 0, None) / 365
         if s.true_type == "trending":
+            if has_stop_age:
+                age = np.minimum(age, s.growth_stop_age)
             r = r * (1 / (1 + np.exp(-(age - 1.2) * 2.2))) * (1 + s.growth * age / 5) / 1.5
         elif s.true_type == "declining":
-            r = r * np.exp(-s.decay * days / DAYS)
+            r = r * np.exp(-s.decay * (days - s.launch_day + 1) / DAYS)  # launch day 1 in years 1 to 5
         else:
             r = r * np.minimum(1.0, age * 4 + 0.25)  # short ramp-up after launch
-        r[(days < s.launch_day) | (days >= s.end_day)] = 0
+        stop = s.stop_day if has_stop_day else s.end_day
+        r[(days < s.launch_day) | (days >= stop)] = 0
         out[i] = r
     return out
+
+
+def daily_rates(cat: pd.DataFrame) -> np.ndarray:
+    """Expected consumer units per day for every SKU (rows) and day (columns), network-wide."""
+    return expected_rates(cat, np.arange(1, DAYS + 1))
 
 
 def build_regions_and_customers(p: WorldParams, rng: np.random.Generator) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -172,8 +191,8 @@ def build_regions_and_customers(p: WorldParams, rng: np.random.Generator) -> tup
     freq = rng.lognormal(np.log(1.5), 1.1, size=p.customers)
     business = rng.random(p.customers) < p.business_share
     signup = np.where(rng.random(p.customers) < 0.6, 1, rng.integers(1, DAYS, size=p.customers))
-    cust = pd.DataFrame(dict(customer_id=np.arange(1, p.customers + 1), region_id=region,
-                             orders_per_year=freq.round(3), business=business, signup_day=signup))
+    cust = pd.DataFrame({"customer_id": np.arange(1, p.customers + 1), "region_id": region,
+                             "orders_per_year": freq.round(3), "business": business, "signup_day": signup})
     return reg, cust
 
 
@@ -192,8 +211,110 @@ def build_bundles(cat: pd.DataFrame, p: WorldParams, rng: np.random.Generator) -
             members.append(int(rng.choice(cross)))
         for s in members:
             free.discard(int(s))
-            rows.append(dict(bundle_id=b, sku_id=int(s)))
+            rows.append({"bundle_id": b, "sku_id": int(s)})
     return pd.DataFrame(rows)
+
+
+class OrderSampler:
+    """Draws one day of consumer orders. The order of random draws is part of world v1, do not reorder."""
+
+    def __init__(self, cat: pd.DataFrame, reg: pd.DataFrame, cust: pd.DataFrame, bundles: pd.DataFrame, p: WorldParams,
+                 listed_bundle_follow: bool = False):
+        self.p = p
+        self.reg = reg
+        self.n_sku = len(cat)
+        self.sku_ids = cat["sku_id"].to_numpy()
+        self.cat_idx = (cat["category_id"] if "category_id" in cat else cat["category"].map({c.name: i for i, c in enumerate(CATEGORIES)})).to_numpy()
+        self.qty_p = np.array([CATEGORIES[c].qty_extra_p for c in self.cat_idx])
+        # Regional taste: richer regions buy more of income-elastic categories.
+        self.pref = np.array([[r.income_index ** CATEGORIES[c].income_elasticity for c in range(len(CATEGORIES))] for r in reg.itertuples()])
+        self.bundle_of = np.full(int(self.sku_ids.max()) + 1, 0)
+        self.bundle_of[bundles["sku_id"].to_numpy()] = bundles["bundle_id"].to_numpy()
+        self.members = {b: g["sku_id"].to_numpy() for b, g in bundles.groupby("bundle_id")}
+        self.row_of = np.full(int(self.sku_ids.max()) + 1, -1)
+        self.row_of[self.sku_ids] = np.arange(self.n_sku)
+        consumers = cust[~cust["business"]]
+        by_region = {r: consumers[consumers["region_id"] == r] for r in reg["id"]}
+        self.cust_pick = {r: (g["customer_id"].to_numpy(), (g["orders_per_year"] / g["orders_per_year"].sum()).to_numpy()) for r, g in by_region.items()}
+        self.mean_lines = 1 + p.extra_lines_mean
+        self.mean_qty = float(np.mean(1 / (1 - self.qty_p[: min(self.n_sku, 300)])))  # the world v1 catalogue sets order sizes
+        self.nb_n, self.nb_p = 1.0, 1.0 / (1 + p.extra_lines_mean)  # negative binomial: mean = n(1-p)/p
+        # Years 6 to 10 only: a bundle partner is drawn among members on sale that day (world v1 also drew
+        # members before launch or after their end, 0.13% of units).
+        self.listed_bundle_follow = listed_bundle_follow
+
+    def day(self, day: int, lam: np.ndarray, rng: np.random.Generator, next_order: int,
+            order_rows: list[np.ndarray], line_rows: list[np.ndarray]) -> int:
+        p = self.p
+        for ri, r in enumerate(self.reg.itertuples()):
+            w = lam * self.pref[ri, self.cat_idx] * r.customer_share
+            total = w.sum()
+            if total <= 0:
+                continue
+            n = rng.poisson(total / (self.mean_lines * self.mean_qty))
+            if n == 0:
+                continue
+            probs = w / total
+            ids, wts = self.cust_pick[r.id]
+            customers = rng.choice(ids, size=n, p=wts)
+            sizes = 1 + rng.negative_binomial(self.nb_n, self.nb_p, size=n)
+            first = rng.choice(self.n_sku, size=n, p=probs)
+            order_ids = np.arange(next_order, next_order + n)
+            next_order += n
+            order_rows.append(np.column_stack([order_ids, np.full(n, day), customers, np.full(n, r.id)]))
+            items = [first]
+            owners = [np.arange(n)]
+            extra_owner = np.repeat(np.arange(n), sizes - 1)
+            if len(extra_owner):
+                fb = self.bundle_of[self.sku_ids[first[extra_owner]]]
+                follow = (fb > 0) & (rng.random(len(extra_owner)) < p.bundle_follow_p)
+                extra = rng.choice(self.n_sku, size=len(extra_owner), p=probs)
+                for k in np.nonzero(follow)[0]:
+                    members = self.members[fb[k]]
+                    if self.listed_bundle_follow:
+                        members = members[lam[self.row_of[members]] > 0]
+                        if len(members) == 0:
+                            continue
+                    extra[k] = self.row_of[rng.choice(members)]
+                items.append(extra)
+                owners.append(extra_owner)
+            it = np.concatenate(items)
+            ow = np.concatenate(owners)
+            # One line per distinct product in an order.
+            key = np.unique(np.column_stack([ow, it]), axis=0)
+            qty = 1 + rng.geometric(1 - self.qty_p[key[:, 1]]) - 1
+            line_rows.append(np.column_stack([order_ids[key[:, 0]], self.sku_ids[key[:, 1]], qty, np.full(len(key), day), np.full(len(key), r.id)]))
+        return next_order
+
+
+def bulk_orders(lumpy: pd.DataFrame, cust: pd.DataFrame, rng: np.random.Generator, next_order: int,
+                order_rows: list[np.ndarray], line_rows: list[np.ndarray], start: np.ndarray, stop: np.ndarray,
+                buyers: pd.DataFrame | None = None, record: list[dict] | None = None) -> int:
+    """Bulk orders for lumpy SKUs from business customers (like the original game's Entworpe buyer).
+    Each SKU gets 1 to 3 buyers, each reordering after exponential gaps from `start` until `stop`.
+    `buyers` (sku_id, customer_id, region_id, gap) fixes the buyers and their mean gaps instead of drawing
+    them; `record` collects the ones drawn."""
+    biz = cust[cust["business"]]
+    for s, first_day, last_day in zip(lumpy.itertuples(), start, stop):
+        if buyers is None:
+            drawn = biz.sample(n=int(rng.integers(1, 4)), random_state=int(rng.integers(1 << 31)))
+            plan = [(b.customer_id, b.region_id, None) for b in drawn.itertuples()]
+        else:
+            mine = buyers[buyers["sku_id"] == s.sku_id]
+            plan = list(zip(mine["customer_id"], mine["region_id"], mine["gap"]))
+        for customer_id, region_id, fixed_gap in plan:
+            gap = rng.uniform(25, 90) if fixed_gap is None else float(fixed_gap)
+            if record is not None:
+                record.append({"sku_id": int(s.sku_id), "customer_id": int(customer_id), "region_id": int(region_id), "gap": float(gap)})
+            day = first_day + rng.exponential(gap)
+            while day < last_day:
+                q = int(max(20, rng.lognormal(np.log(80), 0.5)))
+                d = int(day)
+                order_rows.append(np.array([[next_order, d, customer_id, region_id]]))
+                line_rows.append(np.array([[next_order, s.sku_id, q, d, region_id]]))
+                next_order += 1
+                day += rng.exponential(gap)
+    return next_order
 
 
 def generate(out_dir: str | Path, p: WorldParams | None = None) -> dict:
@@ -207,77 +328,16 @@ def generate(out_dir: str | Path, p: WorldParams | None = None) -> dict:
     bundles = build_bundles(cat, p, rng)
     rates = daily_rates(cat) * p.demand_scale  # (sku, day)
 
-    n_sku = len(cat)
-    sku_ids = cat["sku_id"].to_numpy()
-    cat_idx = cat["category_id"].to_numpy()
-    qty_p = np.array([CATEGORIES[c].qty_extra_p for c in cat_idx])
-    # Regional taste: richer regions buy more of income-elastic categories.
-    pref = np.array([[r.income_index ** CATEGORIES[c].income_elasticity for c in range(len(CATEGORIES))] for r in reg.itertuples()])
-    bundle_of = np.full(n_sku + 1, 0)
-    bundle_of[bundles["sku_id"].to_numpy()] = bundles["bundle_id"].to_numpy()
-    members = {b: g["sku_id"].to_numpy() for b, g in bundles.groupby("bundle_id")}
-
-    consumers = cust[~cust["business"]]
-    by_region = {r: consumers[consumers["region_id"] == r] for r in reg["id"]}
-    cust_pick = {r: (g["customer_id"].to_numpy(), (g["orders_per_year"] / g["orders_per_year"].sum()).to_numpy()) for r, g in by_region.items()}
-
-    mean_lines = 1 + p.extra_lines_mean
-    mean_qty = float(np.mean(1 / (1 - qty_p)))
+    sampler = OrderSampler(cat, reg, cust, bundles, p)
     order_rows: list[np.ndarray] = []
     line_rows: list[np.ndarray] = []
     next_order = 1
-    nb_n, nb_p = 1.0, 1.0 / (1 + p.extra_lines_mean)  # negative binomial: mean = n(1-p)/p
-
     for day in range(1, DAYS + 1):
-        lam = rates[:, day - 1]
-        for ri, r in enumerate(reg.itertuples()):
-            w = lam * pref[ri, cat_idx] * r.customer_share
-            total = w.sum()
-            if total <= 0:
-                continue
-            n = rng.poisson(total / (mean_lines * mean_qty))
-            if n == 0:
-                continue
-            probs = w / total
-            ids, wts = cust_pick[r.id]
-            customers = rng.choice(ids, size=n, p=wts)
-            sizes = 1 + rng.negative_binomial(nb_n, nb_p, size=n)
-            first = rng.choice(n_sku, size=n, p=probs)
-            order_ids = np.arange(next_order, next_order + n)
-            next_order += n
-            order_rows.append(np.column_stack([order_ids, np.full(n, day), customers, np.full(n, r.id)]))
-            items = [first]
-            owners = [np.arange(n)]
-            extra_owner = np.repeat(np.arange(n), sizes - 1)
-            if len(extra_owner):
-                fb = bundle_of[sku_ids[first[extra_owner]]]
-                follow = (fb > 0) & (rng.random(len(extra_owner)) < p.bundle_follow_p)
-                extra = rng.choice(n_sku, size=len(extra_owner), p=probs)
-                for k in np.nonzero(follow)[0]:
-                    extra[k] = rng.choice(members[fb[k]]) - 1
-                items.append(extra)
-                owners.append(extra_owner)
-            it = np.concatenate(items)
-            ow = np.concatenate(owners)
-            # One line per distinct product in an order.
-            key = np.unique(np.column_stack([ow, it]), axis=0)
-            qty = 1 + rng.geometric(1 - qty_p[key[:, 1]]) - 1
-            line_rows.append(np.column_stack([order_ids[key[:, 0]], sku_ids[key[:, 1]], qty, np.full(len(key), day), np.full(len(key), r.id)]))
-
-    # Bulk orders for lumpy SKUs from business customers (like the original game's Entworpe buyer).
-    biz = cust[cust["business"]]
-    for s in cat[cat["true_type"] == "lumpy"].itertuples():
-        buyers = biz.sample(n=int(rng.integers(1, 4)), random_state=int(rng.integers(1 << 31)))
-        for b in buyers.itertuples():
-            gap = rng.uniform(25, 90)
-            day = s.launch_day + rng.exponential(gap)
-            while day < min(s.end_day, DAYS + 1):
-                q = int(max(20, rng.lognormal(np.log(80), 0.5)))
-                d = int(day)
-                order_rows.append(np.array([[next_order, d, b.customer_id, b.region_id]]))
-                line_rows.append(np.array([[next_order, s.sku_id, q, d, b.region_id]]))
-                next_order += 1
-                day += rng.exponential(gap)
+        next_order = sampler.day(day, rates[:, day - 1], rng, next_order, order_rows, line_rows)
+    lumpy = cat[cat["true_type"] == "lumpy"]
+    buyers: list[dict] = []
+    next_order = bulk_orders(lumpy, cust, rng, next_order, order_rows, line_rows,
+                             start=lumpy["launch_day"].to_numpy(), stop=np.minimum(lumpy["end_day"].to_numpy(), DAYS + 1), record=buyers)
 
     orders = pd.DataFrame(np.vstack(order_rows), columns=["order_id", "day", "customer_id", "region_id"]).sort_values(["day", "order_id"])
     lines = pd.DataFrame(np.vstack(line_rows), columns=["order_id", "sku_id", "quantity", "day", "region_id"]).sort_values(["day", "order_id"])
@@ -290,6 +350,7 @@ def generate(out_dir: str | Path, p: WorldParams | None = None) -> dict:
     reg.to_parquet(out / "regions.parquet", index=False)
     cust.to_parquet(out / "customers.parquet", index=False)
     bundles.to_parquet(out / "bundles.parquet", index=False)
+    pd.DataFrame(buyers).to_parquet(out / "bulk_buyers.parquet", index=False)  # hidden truth, used by scgame.world.future
     orders.to_parquet(out / "orders.parquet", index=False)
     lines.to_parquet(out / "order_lines.parquet", index=False)
 
@@ -299,7 +360,7 @@ def generate(out_dir: str | Path, p: WorldParams | None = None) -> dict:
         "version": 1,
         "days": DAYS,
         "params": asdict(p),
-        "counts": {"regions": len(reg), "skus": n_sku, "customers": len(cust), "orders": len(orders), "order_lines": len(lines),
+        "counts": {"regions": len(reg), "skus": len(cat), "customers": len(cust), "orders": len(orders), "order_lines": len(lines),
                    "bundles": int(bundles["bundle_id"].nunique()), "skus_in_bundles": len(bundles)},
         "checks": {
             "revenue_share_top20pct_skus": float(rev.iloc[: int(len(rev) * 0.2)].sum() / rev.sum()),

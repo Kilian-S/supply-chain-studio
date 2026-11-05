@@ -1,0 +1,42 @@
+validation
+  Seasonal naive: score 0.1592 width 0.5 Bottom-up/Middle-out fallback 0
+  ETS: score 0.1782 width 0.75 MinT/Middle-out fallback 194
+  LightGBM {'num_leaves': 15, 'min_data_in_leaf': 50, 'bagging_fraction': 0.8, 'feature_fraction': 0.8, 'objective': 'regression'} best so far 0.1796
+  LightGBM {'num_leaves': 15, 'min_data_in_leaf': 50, 'bagging_fraction': 0.8, 'feature_fraction': 0.8, 'objective': 'tweedie'} best so far 0.1664
+  LightGBM {'num_leaves': 15, 'min_data_in_leaf': 50, 'bagging_fraction': 1.0, 'feature_fraction': 1.0, 'objective': 'regression'} best so far 0.1664
+  LightGBM {'num_leaves': 15, 'min_data_in_leaf': 50, 'bagging_fraction': 1.0, 'feature_fraction': 1.0, 'objective': 'tweedie'} best so far 0.1664
+  LightGBM {'num_leaves': 15, 'min_data_in_leaf': 500, 'bagging_fraction': 0.8, 'feature_fraction': 0.8, 'objective': 'regression'} best so far 0.1655
+  LightGBM {'num_leaves': 15, 'min_data_in_leaf': 500, 'bagging_fraction': 0.8, 'feature_fraction': 0.8, 'objective': 'tweedie'} best so far 0.1627
+  LightGBM {'num_leaves': 15, 'min_data_in_leaf': 500, 'bagging_fraction': 1.0, 'feature_fraction': 1.0, 'objective': 'regression'} best so far 0.1627
+  LightGBM {'num_leaves': 15, 'min_data_in_leaf': 500, 'bagging_fraction': 1.0, 'feature_fraction': 1.0, 'objective': 'tweedie'} best so far 0.1627
+  LightGBM {'num_leaves': 63, 'min_data_in_leaf': 50, 'bagging_fraction': 0.8, 'feature_fraction': 0.8, 'objective': 'regression'} best so far 0.1627
+  LightGBM {'num_leaves': 63, 'min_data_in_leaf': 50, 'bagging_fraction': 0.8, 'feature_fraction': 0.8, 'objective': 'tweedie'} best so far 0.1627
+  LightGBM {'num_leaves': 63, 'min_data_in_leaf': 50, 'bagging_fraction': 1.0, 'feature_fraction': 1.0, 'objective': 'regression'} best so far 0.1627
+  LightGBM {'num_leaves': 63, 'min_data_in_leaf': 50, 'bagging_fraction': 1.0, 'feature_fraction': 1.0, 'objective': 'tweedie'} best so far 0.1627
+  LightGBM {'num_leaves': 63, 'min_data_in_leaf': 500, 'bagging_fraction': 0.8, 'feature_fraction': 0.8, 'objective': 'regression'} best so far 0.1627
+  LightGBM {'num_leaves': 63, 'min_data_in_leaf': 500, 'bagging_fraction': 0.8, 'feature_fraction': 0.8, 'objective': 'tweedie'} best so far 0.1588
+  LightGBM {'num_leaves': 63, 'min_data_in_leaf': 500, 'bagging_fraction': 1.0, 'feature_fraction': 1.0, 'objective': 'regression'} best so far 0.1588
+  LightGBM {'num_leaves': 63, 'min_data_in_leaf': 500, 'bagging_fraction': 1.0, 'feature_fraction': 1.0, 'objective': 'tweedie'} best so far 0.1588
+  LightGBM: score 0.1225 width 0.75 MinT/Middle-out fallback 86
+  Neural network {'width': 32, 'alpha': 0.0001, 'loss': 'squared_error'} best so far 0.1542
+  Neural network {'width': 32, 'alpha': 0.0001, 'loss': 'poisson'} best so far 0.1542
+  Neural network {'width': 32, 'alpha': 0.001, 'loss': 'squared_error'} best so far 0.1533
+  Neural network {'width': 32, 'alpha': 0.001, 'loss': 'poisson'} best so far 0.1533
+  Neural network {'width': 32, 'alpha': 0.01, 'loss': 'squared_error'} best so far 0.1533
+  Neural network {'width': 32, 'alpha': 0.01, 'loss': 'poisson'} best so far 0.1532
+  Neural network {'width': 64, 'alpha': 0.0001, 'loss': 'squared_error'} best so far 0.1532
+  Neural network {'width': 64, 'alpha': 0.0001, 'loss': 'poisson'} best so far 0.1531
+  Neural network {'width': 64, 'alpha': 0.001, 'loss': 'squared_error'} best so far 0.1531
+  Neural network {'width': 64, 'alpha': 0.001, 'loss': 'poisson'} best so far 0.1531
+  Neural network {'width': 64, 'alpha': 0.01, 'loss': 'squared_error'} best so far 0.1531
+  Neural network {'width': 64, 'alpha': 0.01, 'loss': 'poisson'} best so far 0.1531
+  Neural network: score 0.1213 width 0.5 MinT/Bottom-up fallback 86
+chosen: Neural network
+test
+  Seasonal naive: test score 0.0912
+  ETS: test score 0.0941
+  LightGBM: test score 0.1104
+  Neural network: test score 0.1117
+ground truth
+capacity
+done in 3199 s

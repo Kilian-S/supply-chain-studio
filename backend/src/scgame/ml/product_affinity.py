@@ -90,7 +90,7 @@ def pair_stats(X: sparse.csr_matrix, region: np.ndarray, quarter: np.ndarray | N
     quarter = np.zeros(n, dtype=int) if quarter is None else quarter
     expected = np.zeros_like(co)
     stratum = pd.Series(list(zip(region, size, quarter)))
-    for _, rows in stratum.groupby(stratum).groups.items():
+    for rows in stratum.groupby(stratum).groups.values():
         rows = np.asarray(rows)
         if size[rows[0]] >= 2:
             c = np.asarray(X[rows].sum(axis=0)).ravel().astype(float)
@@ -350,7 +350,7 @@ def main(world_dir: str, out_dir: str) -> None:
         "periods": {"train_end": TRAIN_END, "validation": VAL, "test": TEST},
         "facts": {"orders": int(X.shape[0]), "multi_share": float((basket_sizes > 1).mean()),
                   "skus_per_order": float(basket_sizes.mean()), "pairs_seen": int((st["count"][iu] > 0).sum()),
-                  "pairs_possible": int(len(iu[0])),
+                  "pairs_possible": len(iu[0]),
                   "top200_count_true_share": float(same_bundle[top200_count].mean()),
                   "top200_lift_true_share": float(same_bundle[top200_lift].mean()),
                   "basket_size_counts": np.bincount(basket_sizes).tolist(),
@@ -364,7 +364,7 @@ def main(world_dir: str, out_dir: str) -> None:
         "workload_note": workload_note,
         "quarter_note": {"added_after_truth_check": True, "with_quarter": {"val_cost": best["val_cost"], "truth": best["truth"]},
                          "without_quarter": without_quarter},
-        "truth": {"bundles": int(len(bundle_units)), "skus_in_bundles": int((truth > 0).sum()), "check": check},
+        "truth": {"bundles": len(bundle_units), "skus_in_bundles": int((truth > 0).sum()), "check": check},
         "results": results,
         "results_validation": results_validation,
         "resolution_invariant": all(g["labels"] == next(x for x in grid if x["fdr"] == g["fdr"])["labels"] for g in grid),
