@@ -274,4 +274,9 @@ questions fast, H flags risk, O decides, and the simulator checks the decision.
   quantiles from B and C.
 - Solver: HiGHS (free). Robust or two-stage stochastic version over scenarios.
 - Validation: replay the plan in the simulator against the do-nothing baseline.
-- Open points: level of detail (categories or SKUs); stochastic or robust formulation.
+- 5 November 2026. Proposal `design/network-plan/PROPOSAL.md`; Kilian decided its 15 points the same day
+  (section 14). Region totals per month, one capacity per FC; a two-stage stochastic MILP by sample average
+  approximation (HiGHS through scipy); B's paths written by O from B's code; three new markets from C;
+  checked on B's replications and B's second future. Build under way on `claude/model-o`.
+- Open points (original): level of detail (categories or SKUs); stochastic or robust formulation. Both
+  decided above.
