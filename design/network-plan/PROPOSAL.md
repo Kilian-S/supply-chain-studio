@@ -1,7 +1,8 @@
 # Network plan, implementation proposal
 
 Model O from `ML_ROADMAP.md`. Written 5 November 2026 for Kilian's decisions, corrected the same day against
-model B at `6af2ad8` (section 3). Nothing is built yet.
+model B at `6af2ad8` (section 3). Kilian decided the 15 points the same day (section 14); the build follows
+them.
 
 This proposal sits on `claude/model-o`, branched from `integration` at `28cac5c`, which holds models B (at
 `6af2ad8`), C and H.
@@ -253,9 +254,9 @@ its cost, results last, no recap.
 by how much?"
 
 **Opening.** Title "Network plan". Question "Where should the shop build capacity for the next five years?"
-Boxes "FC sites" (11), "Years" (5), "Scenarios" (S).
+Boxes "FC sites" (11), "Years" (5) (Kilian removed "Scenarios", since S is chosen on screen 4).
 
-1. **Demand ahead.** Small multiples (3 × 4) of the P10 to P90 band and P50 of every region and new market
+1. **Demand forecast.** Small multiples (3 × 4) of the P10 to P90 band and P50 of every region and new market
    for years 6 to 10, plus the network, from B and C. Drawer on how C and B combine and on B's late-year
    assumption.
 2. **Today's network.** A map of Pangea with the central FC, its capacity against year 5's peak, the
@@ -313,6 +314,19 @@ missing; the new markets' replications about 5 minutes; the programmes about 30 
 5 plans, 9 capacity cost ratios, 6 opening costs).
 
 ## 14. Decisions
+
+Kilian's decisions of 5 November 2026. Accepted as recommended, 1, 2, 3, 5, 6, 7, 9, 10, 12, 14 and 15. For 7,
+the figures of the recheck against B at `6af2ad8`. For 9, S in 25, 50, 100 and 200, and all 9 capacity cost
+ratios. Changed or extended:
+
+- **4.** Accepted; the opening-cost range is shown in the results, not only in a drawer, since at the game's
+  value it is small next to capacity.
+- **8.** Changed. B's session is not asked; O writes B's test paths itself from B's code on the integration
+  branch, into `data/models/network-plan/`.
+- **11.** Accepted, including B's second future (available on the integration branch).
+- **13.** Accepted with two changes. No "Scenarios" box in the opening; screen 1 is called "Demand forecast".
+- **Extension.** After the review and the handover, if time allows, the rolling plan of limit 2 (revised
+  each year as demand arrives), evaluated on the same scoring replications.
 
 | # | Decision | Recommendation |
 |---|---|---|
