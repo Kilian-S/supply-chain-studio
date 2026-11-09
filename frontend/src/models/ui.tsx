@@ -62,10 +62,10 @@ export function Sparkline({ values, color = '#4338ca', label }: { values: number
 }
 
 /** The five years of the shop and the set each belongs to. */
-export function Years() {
+export function Years({ sets = YEAR_SETS }: { sets?: readonly string[] }) {
   return (
-    <div className="sc-years">
-      {YEAR_SETS.map((set, i) => <div key={i}>{yearLabel(i + 1)}<small>{set}</small></div>)}
+    <div className="sc-years" style={{ gridTemplateColumns: `repeat(${sets.length}, minmax(0, 1fr))` }}>
+      {sets.map((set, i) => <div key={i} className={set === YEAR_SETS[4] ? 'test' : undefined}>{yearLabel(i + 1)}<small>{set}</small></div>)}
     </div>
   )
 }

@@ -238,3 +238,15 @@ names (rule 2); never caption the encoding (rule 3); group names read as one gro
 kept apart from business value (rule 6); a vocabulary chain where the story changes concept (rule 7);
 self-explaining screens with drawn constraints and explained surprises (rule 8); how to work alone,
 with independent critics, disclosure and a list of decisions to revisit (rule 13).
+
+## Demand five years out: built in the lean loop (2026-11-09)
+
+- **Process.** Storyline written by the orchestrator, one combined critic (rules, truth, slop), two
+  rounds of the storyline, built locally, one combined visual and slop review, one fix round. Specs and
+  reviews in `design/demand-forecast/`.
+- **What the critics caught.** The reversal's horizon stated three ways; "mean forecast error" read as
+  bias; calibration bars that hid that 100% inside means a band far too wide, against a ground truth
+  conditional on one simulation; a capacity result that reverses in simulation 2; late and incomplete
+  disclosure of test-informed changes; unlabelled result bars; white text on mid-pink cells; fans with no
+  key; three names for one band.
+- **Ready for Kilian's screen-by-screen review.**

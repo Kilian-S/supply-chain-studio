@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { WORDING } from './affinity/copy'
+import { WORDING as FORECAST } from './forecast/copy'
 import { BANNED_ON_SURFACE, BANNED_SPELLINGS, SURFACE } from './lexicon'
 import { COPY } from './sku/copy'
 
@@ -45,5 +46,23 @@ describe('bought together wording', () => {
   })
   it('has no formula left unclosed', () => {
     for (const s of everything) expect(prose(s), s).not.toMatch(/\\[([]/)
+  })
+})
+
+// The Demand five years out page, the same checks.
+describe('demand forecast wording', () => {
+  const all = [...FORECAST.surface, ...FORECAST.drawer]
+  it('collects the strings', () => {
+    expect(FORECAST.surface.length).toBeGreaterThan(30)
+    expect(FORECAST.drawer.length).toBeGreaterThan(30)
+  })
+  it('keeps jargon off the surface', () => {
+    for (const s of FORECAST.surface) for (const w of BANNED_ON_SURFACE) expect(s.toLowerCase(), s).not.toMatch(new RegExp(`\\b${w}`))
+  })
+  it('uses British spelling', () => {
+    for (const s of all) for (const w of BANNED_SPELLINGS) expect(s.toLowerCase(), s).not.toMatch(new RegExp(`\\b${w}`))
+  })
+  it('has no em or en dashes and no colons in prose', () => {
+    for (const s of all) { expect(s, s).not.toContain('—'); expect(s, s).not.toContain('–'); expect(s, s).not.toContain(':') }
   })
 })

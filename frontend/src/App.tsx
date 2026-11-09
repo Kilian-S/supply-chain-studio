@@ -13,6 +13,7 @@ import { CashPanel, HistoryPanel, OverviewPanel } from './components/panels/Info
 import RegionPanel from './components/panels/RegionPanel'
 import WarehousePanel from './components/panels/WarehousePanel'
 import ProductAffinityPage from './models/affinity/ProductAffinityPage'
+import DemandForecastPage from './models/forecast/DemandForecastPage'
 import ModelsHome from './models/ModelsHome'
 import SkuSegmentationPage from './models/sku/SkuSegmentationPage'
 
@@ -42,6 +43,7 @@ export default function App() {
   let body: React.ReactNode
   if (hash.startsWith('#/models/sku-segmentation')) body = <SkuSegmentationPage />
   else if (hash.startsWith('#/models/product-affinity')) body = <ProductAffinityPage />
+  else if (hash.startsWith('#/models/demand-forecast')) body = <DemandForecastPage />
   else if (inModels) body = <ModelsHome />
   else if (screen.kind === 'design') body = <Designer key={screen.id} scenarioId={screen.id} takenIds={screen.taken} onBack={toStart} onPlay={play} />
   else body = <StartScreen onStart={play} onDesign={(id, taken) => setScreen({ kind: 'design', id, taken })} />

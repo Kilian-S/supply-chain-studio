@@ -71,7 +71,8 @@
 /* Timeline */
 .sc-years { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border: 1px solid var(--sc-line); }
 .sc-years div { padding: 14px; border-right: 1px solid var(--sc-line); font-size: 14px; font-weight: 600; display: flex; flex-direction: column; gap: 3px; }
-.sc-years div:last-child { border-right: 0; background: var(--sc-accent-soft); }
+.sc-years div:last-child { border-right: 0; }
+.sc-years div.test { background: var(--sc-accent-soft); }
 .sc-years small { font-weight: 400; color: var(--sc-muted); font-size: 12.5px; }
 
 /* Comparison bars */
@@ -248,3 +249,22 @@
 a.sc-model-card:hover { background: var(--sc-hover); }
 .sc-model-card.off { color: var(--sc-muted); }
 .sc-model-card.off h3 { color: var(--sc-muted); }
+
+/* Demand five years out */
+.sc-split { display: grid; grid-template-columns: minmax(0, 380px) minmax(0, 1fr); gap: 28px; align-items: start; }
+.sc-rules { border-collapse: collapse; font-size: 14px; }
+.sc-rules th, .sc-rules td { text-align: left; vertical-align: top; padding: 8px 10px 8px 0; border-bottom: 1px solid var(--sc-line); }
+.sc-rules thead th { color: var(--sc-muted); font-weight: 400; border-bottom-color: var(--sc-line-strong); }
+.sc-rules tbody th { font-weight: 600; white-space: nowrap; }
+.sc-val thead th { font-weight: 400; color: var(--sc-muted); text-align: right; }
+.sc-val thead th:first-child { text-align: left; }
+.sc-val tbody th { color: var(--sc-ink); padding-left: 0; }
+.sc-val tr.chosen th, .sc-val tr.chosen td { font-weight: 700; }
+.sc-val td { min-width: 96px; }
+.sc-key { display: flex; gap: 22px; font-size: 13px; color: var(--sc-muted); }
+.sc-key span { display: inline-flex; align-items: center; gap: 8px; }
+.sc-key i { width: 22px; height: 10px; display: inline-block; }
+.sc-fan svg { width: 100%; height: auto; display: block; }
+@media (max-width: 900px) { .sc-split { grid-template-columns: 1fr; } }
+.sc-key i.ln { height: 2px; }
+.showcase table.grid th.num { text-align: right; }

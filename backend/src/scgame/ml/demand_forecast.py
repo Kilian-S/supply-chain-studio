@@ -580,6 +580,9 @@ def main(world_dir: str, out_dir: str) -> None:
         print(s, flush=True)
     ensure_world(world_dir, log)
     run(world_dir, out_dir, log=log)
+    card = {"id": "demand-forecast", "title": "Demand five years out", "status": "ready", "method": "Forecasting",
+            "question": "How much will each region and category sell over five years, and how sure are we?"}
+    (Path(out_dir) / "card.json").write_text(json.dumps(card, indent=2))
 
 
 if __name__ == "__main__":

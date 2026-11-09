@@ -1,0 +1,7 @@
+{
+  "id": "demand-forecast",
+  "title": "Demand five years out",
+  "status": "ready",
+  "method": "Forecasting",
+  "question": "How much will each region and category sell over five years, and how sure are we?"
+}
