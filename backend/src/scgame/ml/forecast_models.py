@@ -2,7 +2,7 @@
 
 Both read one year of a series (scaled by its mean) plus its traits and predict the next year; five years
 come from applying them five times, feeding each forecast year back in (agreed design A1 to C7 in
-`design/demand-forecast/PROPOSAL.md`, section 4a).
+`docs/design/demand-forecast/PROPOSAL.md`, section 4a).
 """
 
 from __future__ import annotations

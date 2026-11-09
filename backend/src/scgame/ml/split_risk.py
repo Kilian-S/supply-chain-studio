@@ -2,8 +2,8 @@
 
 Usage: uv run python -m scgame.ml.split_risk <world dir> <models dir> <output dir>
 
-The design agreed with Kilian is in design/split-risk/PROPOSAL.md (section 6a); the handover in
-design/split-risk/HANDOVER.md describes the run.
+The design agreed with Kilian is in docs/design/split-risk/PROPOSAL.md (section 6a); the handover in
+docs/design/split-risk/HANDOVER.md describes the run.
 
   1. Networks. 60 training, 20 validation and 20 test networks drawn at random (sites, listing share,
      listing rule, service level); the test site sets appear in no other set. Three more site sets are

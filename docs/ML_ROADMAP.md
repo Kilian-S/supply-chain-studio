@@ -1,6 +1,6 @@
 # ML and OR roadmap
 
-Agreed 28 October 2026. Companion to `PLAN.md`. Nothing in this file is implemented yet; each
+Agreed 28 October 2026. Companion to `docs/PLAN.md`. Nothing in this file is implemented yet; each
 selected item is discussed in detail before it is built.
 
 ## 1. What the demo shows
@@ -138,7 +138,7 @@ questions fast, H flags risk, O decides, and the simulator checks the decision.
 ### B. Long-range demand forecasting (supervised regression, neural network)
 - Built 2 to 3 November 2026 (code in `backend/src/scgame/ml/demand_*.py` and `forecast_*.py`, world
   years 6 to 10 in `backend/src/scgame/world/future.py`, ground truth in `replicate.py`, outputs in
-  `data/models/demand-forecast/`). No page yet. Proposal `design/demand-forecast/PROPOSAL.md`, results
+  `data/models/demand-forecast/`). No page yet. Proposal `docs/design/demand-forecast/PROPOSAL.md`, results
   `RESULTS.md`, build and rebuild `HANDOVER.md` in the same folder.
 - **Data.** Monthly units (a month is a twelfth of a 365-day year) at six levels, Total, Region, Category,
   Region × category, SKU and Region × SKU (2,744 series in the validation fit). Bulk orders kept. The world
@@ -187,7 +187,7 @@ questions fast, H flags risk, O decides, and the simulator checks the decision.
 
 ### C. New-region demand (supervised regression, cold start)
 - Built 3 November 2026 (code `backend/src/scgame/ml/region_sim.py` and `region_demand.py`, outputs in
-  `data/models/new-region-demand/`). No page yet. Proposal `design/new-region-demand/PROPOSAL.md`, build and
+  `data/models/new-region-demand/`). No page yet. Proposal `docs/design/new-region-demand/PROPOSAL.md`, build and
   rebuild `HANDOVER.md` in the same folder.
 - **Question.** Yearly units per category of a region before its first order, from its features and the
   existing regions' history; months and SKUs follow the network's mix.
@@ -237,7 +237,7 @@ questions fast, H flags risk, O decides, and the simulator checks the decision.
 
 ### H. Split orders (supervised classification)
 - Built 3 November 2026 (`backend/src/scgame/ml/split_sim.py` and `split_risk.py`, outputs in
-  `data/models/split-risk/`). No page yet. Proposal and agreed design `design/split-risk/PROPOSAL.md`
+  `data/models/split-risk/`). No page yet. Proposal and agreed design `docs/design/split-risk/PROPOSAL.md`
   (section 6a), build and results `HANDOVER.md` in the same folder.
 - **Question.** Before a planner commits to a network (which FCs open, what each lists, at what service
   level), how many of next year's orders will ship in more than one parcel, and which orders and SKUs?
@@ -255,7 +255,7 @@ questions fast, H flags risk, O decides, and the simulator checks the decision.
   error 0.5%. The rule catches 56% of split orders; the misses are stock-outs, gathered in November. For a
   network's split rate, gradient boosting (0.7 points), the replay (0.9) and logistic regression (0.9)
   cannot be told apart, all far better than the rule (2.8); no method changes the choice of listing rule.
-- **Independent review** (`design/split-risk/review-truth-r1.md`, 3 November). No leakage found. The
+- **Independent review** (`docs/design/split-risk/review-truth-r1.md`, 3 November). No leakage found. The
   replay's in-stock rates pooled first and later routing rounds; fixed in a second run after the test had
   been scored (disclosed), which changed only replay results. Wording, intervals, noise floor and tests
   corrected as listed in HANDOVER section 7.
@@ -274,12 +274,12 @@ questions fast, H flags risk, O decides, and the simulator checks the decision.
   quantiles from B and C.
 - Solver: HiGHS (free). Robust or two-stage stochastic version over scenarios.
 - Validation: replay the plan in the simulator against the do-nothing baseline.
-- 5 November 2026. Proposal `design/network-plan/PROPOSAL.md`; Kilian decided its 15 points the same day
+- 5 November 2026. Proposal `docs/design/network-plan/PROPOSAL.md`; Kilian decided its 15 points the same day
   (section 14). Region totals per month, one capacity per FC; a two-stage stochastic MILP by sample average
   approximation (HiGHS through scipy); B's paths written by O from B's code; three new markets from C;
   checked on B's replications and B's second future. Built 5 November on `claude/model-o`
   (`network_paths.py`, `network_plan.py`, outputs in `data/models/network-plan/`, handover
-  `design/network-plan/HANDOVER.md`, independent review `review-truth-r1.md`).
+  `docs/design/network-plan/HANDOVER.md`, independent review `review-truth-r1.md`).
 - **Headline** (game costs, first future). Every regional FC opens in year 7; our plan costs $11.99M over
   five years, 1.4% above the ground-truth plan and 24% below doing nothing; the P50 plan (+0.8%) and the ETS
   plan (+0.5%) do slightly better, because B's late years and the new markets (by 11 to 35%) are

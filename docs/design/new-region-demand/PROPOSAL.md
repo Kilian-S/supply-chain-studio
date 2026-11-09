@@ -1,6 +1,6 @@
 # New-region demand, implementation proposal
 
-Model C from `ML_ROADMAP.md`. Written 3 November 2026 on branch `claude/relaxed-brahmagupta-qd6agt`
+Model C from `docs/ML_ROADMAP.md`. Written 3 November 2026 on branch `claude/relaxed-brahmagupta-qd6agt`
 (from model B's branch `claude/festive-johnson-bl41d7`). Kilian agreed every recommendation of section 13
 on 3 November 2026, and the model design D1 to D14 in section 4a after a first-principles explanation
 in chat. He asked where urban share comes from (section 3) and kept it as a feature.
@@ -283,7 +283,7 @@ regularisation, elasticity, leave one region out, extrapolation, learning curve,
 B reused as approved there (forecast, forecast origin, P10, P50, P90, prediction interval, coverage,
 WAPE, bias, LightGBM, gradient boosting, capacity).
 
-Drawer only (to add to `GLOSSARY.md`). Jackknife, log-normal, Latin hypercube, offset, sample average
+Drawer only (to add to `docs/GLOSSARY.md`). Jackknife, log-normal, Latin hypercube, offset, sample average
 approximation.
 
 ## 12. Build plan after approval
@@ -296,8 +296,8 @@ approximation.
    `backend/tests/test_region_demand.py`.
 3. Outputs in `data/models/new-region-demand/` (`overview.json` and the per-region forecasts), no
    `card.json`.
-4. One self-review against the truth rules, then `design/new-region-demand/HANDOVER.md` in the shape of
-   B's, and section C of `ML_ROADMAP.md`.
+4. One self-review against the truth rules, then `docs/design/new-region-demand/HANDOVER.md` in the shape of
+   B's, and section C of `docs/ML_ROADMAP.md`.
 
 Expected runtime about 15 minutes on 4 cores, most of it the replications. Nothing in the generator, the
 simulator, `policy_sim.py`, B's code or any other model changes.

@@ -1,6 +1,6 @@
 """New-region demand (model C): yearly units per category of a region before its first order.
 
-Agreed design in `design/new-region-demand/PROPOSAL.md` (sections 4a and 13); build notes in `HANDOVER.md`.
+Agreed design in `docs/design/new-region-demand/PROPOSAL.md` (sections 4a and 13); build notes in `HANDOVER.md`.
 
 - Example: one region × category. Label: log of the region's units per 1,000 inhabitants over the
   network's (index, network = 1), pooled over the fitting years. Rows weighted by their share of the

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import './showcase.css'
 import { listModels, type ModelCard } from './types'
 
-// The models chosen in ML_ROADMAP.md, in storyline order. Cards for built ones come from the backend.
+// The models chosen in docs/ML_ROADMAP.md, in storyline order. Cards for built ones come from the backend.
 // A card is a title and its question; models not built yet are greyed out and not clickable.
 const PLANNED: ModelCard[] = [
   { id: 'sku-segmentation', title: 'SKU clustering', status: 'planned', question: 'Which SKUs sell alike, so each cluster can get its own stocking policy?', method: 'Clustering' },

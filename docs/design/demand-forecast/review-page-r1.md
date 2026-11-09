@@ -1,6 +1,6 @@
 # Demand five years out, page review (round 1)
 
-Combined visual and AI-slop review of the built page against `STORYLINE.md` (round 2), the Writing style and Design rules in `CLAUDE.md`, Kilian's comments in `DESIGN_REVIEW.md` and `design/SLOP_CHECKLIST.md`. Screens were read from the 1440 x 900 screenshots, drawers below the fold from `copy.ts`, `DemandForecastPage.tsx` and `charts/Fan.tsx`. Numbers in the truth drawer were checked against `overview.json`. The grep checks pass on `copy.ts` (no em or en dash, no colon in prose, no forced contrast, no AI vocabulary, British spelling). Headlines follow the earlier pages (noun phrase with a full stop, "Results" without).
+Combined visual and AI-slop review of the built page against `STORYLINE.md` (round 2), the Writing style and Design rules in `CLAUDE.md`, Kilian's comments in `docs/DESIGN_REVIEW.md` and `docs/design/SLOP_CHECKLIST.md`. Screens were read from the 1440 x 900 screenshots, drawers below the fold from `copy.ts`, `DemandForecastPage.tsx` and `charts/Fan.tsx`. Numbers in the truth drawer were checked against `overview.json`. The grep checks pass on `copy.ts` (no em or en dash, no colon in prose, no forced contrast, no AI vocabulary, British spelling). Headlines follow the earlier pages (noun phrase with a full stop, "Results" without).
 
 | # | Screen | Finding | Rule, spec or checklist reference | Severity | Concrete fix |
 |---|---|---|---|---|---|

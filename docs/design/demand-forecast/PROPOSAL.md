@@ -1,6 +1,6 @@
 # Demand forecast, implementation proposal
 
-Model B from `ML_ROADMAP.md`, revised 2 November 2026 after Kilian asked for a five-year forecast.
+Model B from `docs/ML_ROADMAP.md`, revised 2 November 2026 after Kilian asked for a five-year forecast.
 Kilian agreed every recommendation on 2 November 2026, with one change (the catalogue stays near 300
 SKUs, section 2) and the model design in section 4a. Phases 0 to 3 of the build are under way.
 
@@ -242,7 +242,7 @@ seasonal naive, ETS (exponential smoothing), LightGBM, gradient boosting, neural
 P10, P50, P90, prediction interval, coverage, pinball loss, WAPE, bias, reconciliation, coherent,
 bottom-up, sample path, capacity, stochastic programme.
 
-Drawer only (to add to `GLOSSARY.md`). MinT, shrinkage, AIC, damped trend, rolling origin, joint
+Drawer only (to add to `docs/GLOSSARY.md`). MinT, shrinkage, AIC, damped trend, rolling origin, joint
 bootstrap, N-BEATS, multilayer perceptron, sample average approximation, critical ratio.
 
 ## 12. Build plan after approval
@@ -253,7 +253,7 @@ bootstrap, N-BEATS, multilayer perceptron, sample average approximation, critica
    `card.json` until the page exists.
 3. Storyline spec, critics and page as for Bought together, then `frontend/src/models/forecast/` with
    `copy.ts` under `lexicon.test.ts`.
-4. A `DESIGN_REVIEW.md` entry per review round.
+4. A `docs/DESIGN_REVIEW.md` entry per review round.
 
 ## 13. Decisions
 

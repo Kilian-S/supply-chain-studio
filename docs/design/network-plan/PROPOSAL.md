@@ -1,6 +1,6 @@
 # Network plan, implementation proposal
 
-Model O from `ML_ROADMAP.md`. Written 5 November 2026 for Kilian's decisions, corrected the same day against
+Model O from `docs/ML_ROADMAP.md`. Written 5 November 2026 for Kilian's decisions, corrected the same day against
 model B at `6af2ad8` (section 3). Kilian decided the 15 points the same day (section 14); the build follows
 them.
 
@@ -281,7 +281,7 @@ New surface terms to approve. Network plan, candidate site, mixed-integer progra
 constraint, objective, two-stage, scenario, recourse, capacity (approved for B), utilisation, value of the
 stochastic solution.
 
-Drawer only (to add to `GLOSSARY.md`). Sample average approximation (proposed for B), HiGHS, branch and
+Drawer only (to add to `docs/GLOSSARY.md`). Sample average approximation (proposed for B), HiGHS, branch and
 bound, big-M constraint, conditional value at risk, wait-and-see bound, expected value of perfect
 information.
 
@@ -307,7 +307,7 @@ information.
    on the replications, the cost ranges) with tests, including a toy network whose optimum is known by hand and
    a check that the evaluation of a plan reproduces the programme's own second stage.
 3. Outputs in `data/models/network-plan/`, no `card.json`. One independent review (leakage, fair baselines,
-   choices on forecasts only), then `design/network-plan/HANDOVER.md`.
+   choices on forecasts only), then `docs/design/network-plan/HANDOVER.md`.
 
 Estimated runtime. B's paths more than an hour on 4 cores unless B saves them; B's replications about 13 minutes if
 missing; the new markets' replications about 5 minutes; the programmes about 30 to 60 minutes (scenario check,

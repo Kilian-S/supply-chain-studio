@@ -4,8 +4,8 @@ Fit on years 1 to 3 (months 1 to 36); every setting is chosen on years 4 and 5 (
 from month 36). The chosen settings are refitted on years 1 to 5 and years 6 to 10 are forecast once from
 month 60 (upper levels five years ahead, SKU levels two). Years 6 to 10 are read only by the test step.
 The ground truth (200 replications, `scgame.world.replicate`) checks the forecasts and is never used to
-choose. Design and decisions in `design/demand-forecast/PROPOSAL.md`, the build in
-`design/demand-forecast/HANDOVER.md`. Years 6 to 10 are also drawn a second time (another seed, same rules)
+choose. Design and decisions in `docs/design/demand-forecast/PROPOSAL.md`, the build in
+`docs/design/demand-forecast/HANDOVER.md`. Years 6 to 10 are also drawn a second time (another seed, same rules)
 and the same forecasts are scored on them once.
 
 Usage: uv run python -m scgame.ml.demand_forecast <world dir> <out dir>

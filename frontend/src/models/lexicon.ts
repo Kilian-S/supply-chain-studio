@@ -1,7 +1,7 @@
 /* The single source of visible wording on the model pages. Rules (checked by lexicon.test.ts):
  * Kilian's approved vocabulary may appear on the surface (SKU, feature, clustering, k, centroid,
  * kNN, z-score, PCA, ground truth, purity, ARI, ABC/XYZ, ADI, CV², stocking policy, FC, service
- * level, fill rate...). Terms on the reading list (GLOSSARY.md: GMM, soft assignment, EM, UMAP, NMI,
+ * level, fill rate...). Terms on the reading list (docs/GLOSSARY.md: GMM, soft assignment, EM, UMAP, NMI,
  * silhouette, BIC, bootstrap stability, Syntetos-Boylan) stay inside "How it works" drawers.
  * British English, no em or en dashes. */
 
@@ -96,7 +96,7 @@ export const yearLabel = (y: number) => `Year ${y}`
 export const YEAR_SETS = ['Training set', 'Training set', 'Training set', 'Validation set', 'Test set']
 
 // Words that must never appear on the visible surface outside a drawer (checked by the test).
-// Reading-list terms: allowed in drawers and GLOSSARY.md, not on the surface.
+// Reading-list terms: allowed in drawers and docs/GLOSSARY.md, not on the surface.
 export const BANNED_ON_SURFACE = ['gmm', 'gaussian mixture', 'soft assignment', 'expectation', 'umap', 'nmi', 'mutual information', 'silhouette', 'bic', 'bootstrap', 'syntetos', 'boylan']
 export const BANNED_SPELLINGS = ['color', 'behavior', 'optimize', 'center', 'analyze', 'minimize', 'maximize', 'catalog', 'modeling', 'labeled']
 

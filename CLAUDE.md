@@ -3,9 +3,9 @@
 Portfolio project in operations research and machine learning.
 It has three pillars, a discrete-event simulator of a multi-region supply network with a scenario
 designer, the G4 autonomous bots, and the core, ML and OR models for long-term (strategic)
-supply chain decisions in a simulated multi-product shop. Read `HANDOVER.md` first for the current
-state and open items, `ML_ROADMAP.md` for the models, and `DESIGN_REVIEW.md` for every design comment
-Kilian has made and the rules distilled from them.
+supply chain decisions in a simulated multi-product shop. Read `docs/HANDOVER.md` first for the
+current state and open items, `docs/ML_ROADMAP.md` for the models, and `docs/DESIGN_REVIEW.md` for
+every design comment Kilian has made and the rules distilled from them.
 
 ## Setting up (also in a fresh cloud clone)
 
@@ -48,10 +48,10 @@ Run these checks before any commit.
   STL decomposition, training/validation/test set, selection bias, overfitting, stocking policy, FC,
   service level, fill rate, order-up-to level, lead time, safety stock, risk pooling, holding cost,
   lost sales, calibration, Pareto principle, community, lift, linked pair, co-occurrence.
-- Drawer-only (see `GLOSSARY.md`): GMM, soft assignment, EM, UMAP, NMI, silhouette score, BIC,
+- Drawer-only (see `docs/GLOSSARY.md`): GMM, soft assignment, EM, UMAP, NMI, silhouette score, BIC,
   bootstrap stability, Syntetos-Boylan. Ask Kilian before promoting a new term.
-- The AI-slop checklist in `design/SLOP_CHECKLIST.md` applies, with Kilian's choices winning where it
-  conflicts (see its last section).
+- The AI-slop checklist in `docs/design/SLOP_CHECKLIST.md` applies, with Kilian's choices winning
+  where it conflicts (see its last section).
 
 ## Writing style (Kilian's global rules, copied here for cloud sessions)
 

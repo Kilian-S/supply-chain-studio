@@ -1,4 +1,4 @@
-// Visible wording of the Demand five years out page (design/demand-forecast/STORYLINE.md). Strings under
+// Visible wording of the Demand five years out page (docs/design/demand-forecast/STORYLINE.md). Strings under
 // a `drawer` key appear only inside the drawers; lexicon.test.ts checks all of them.
 
 export type Method = 'Seasonal naive' | 'ETS' | 'LightGBM' | 'Neural network'

@@ -50,7 +50,7 @@ Title "Demand five years out". Question "How far ahead can five years of sales s
     the first, a review found faults in the bands and six fixes followed. Then the bands switched to
     out-of-sample errors from rolling refits, and simulation 2 was added after simulation 1 had been
     scored. Two last corrections made the paths average the mean forecast and scored point accuracy on
-    the mean (`design/demand-forecast/HANDOVER.md` section 0). The point forecasts, the chosen method and
+    the mean (`docs/design/demand-forecast/HANDOVER.md` section 0). The point forecasts, the chosen method and
     the world never changed.
 
 ## 3. Forecasting methods.

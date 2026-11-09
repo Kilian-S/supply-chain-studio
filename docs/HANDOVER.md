@@ -11,7 +11,7 @@ State on 2 November 2026, for a new session (local or cloud). Read `CLAUDE.md` f
   trade-off.
 - **Bought together** (`#/models/product-affinity`, `backend/src/scgame/ml/product_affinity.py`).
   Built by an agent loop (writer, rules, truth and slop critics, builder, visual reviewer; specs and
-  reviews in `design/bought-together/`), then one review round with Kilian (`DESIGN_REVIEW.md`, last
+  reviews in `docs/design/bought-together/`), then one review round with Kilian (`docs/DESIGN_REVIEW.md`, last
   entries). Communities match the 45 planted bundles; the split-catalogue check cuts split orders by
   3 to 7% against storing by category.
 
@@ -29,7 +29,7 @@ State on 2 November 2026, for a new session (local or cloud). Read `CLAUDE.md` f
 - **Demand forecast (model B).** Model built, reviewed twice by an independent agent and committed with its
   outputs (`data/models/demand-forecast/`). Stopped before the page at Kilian's request (3 November 2026);
   no frontend and no `card.json`. The local session reviews the model and designs the page, starting from
-  `design/demand-forecast/HANDOVER.md` (inputs, method, settings, results with their output fields,
+  `docs/design/demand-forecast/HANDOVER.md` (inputs, method, settings, results with their output fields,
   disclosures, limits, rebuild commands), then `RESULTS.md` (results and Kilian's open questions) and
   `PROPOSAL.md` (agreed design, storyline draft, vocabulary). Rebuild with the generator, then
   `uv run python -m scgame.ml.demand_forecast ../data/world_v1 ../data/models/demand-forecast` (about an
@@ -38,14 +38,14 @@ State on 2 November 2026, for a new session (local or cloud). Read `CLAUDE.md` f
 ## Next
 
 The remaining models after B, in storyline order, are C (new-region demand), A (what-if surrogate),
-H (risk classification), O (network design MILP). See `ML_ROADMAP.md`, section 6. Each needs its
+H (risk classification), O (network design MILP). See `docs/ML_ROADMAP.md`, section 6. Each needs its
 implementation discussed with Kilian before building. Prepare a proposal (inputs, method, validation,
 baselines, business check, draft storyline under the design rules) and wait for his decisions.
 
 ## How Kilian works
 
 - He reviews page by page with screenshots and short comments; change exactly what he names, then
-  report briefly. Keep a log entry per round in `DESIGN_REVIEW.md` (comment, change, habit).
+  report briefly. Keep a log entry per round in `docs/DESIGN_REVIEW.md` (comment, change, habit).
 - He prefers recommendations over option lists, short answers when asked ("in one sentence",
   "yes/no"), and honest caveats (what flatters a result).
 - The models home card appears when a model writes `card.json`; do not write it before the page

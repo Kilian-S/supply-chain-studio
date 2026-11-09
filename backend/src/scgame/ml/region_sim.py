@@ -4,7 +4,7 @@ World v1 has only its 8 regions, so a clean test of a cold-start forecast needs 
 This module simulates them with the generator's own process (`OrderSampler`, `expected_rates`,
 `bulk_orders`, imported unchanged). Nothing in the world files changes.
 
-Rules (agreed 3 November 2026, `design/new-region-demand/PROPOSAL.md` section 8).
+Rules (agreed 3 November 2026, `docs/design/new-region-demand/PROPOSAL.md` section 8).
 - A new region's consumer demand follows the generator's formula, with its weight (population × online
   adoption × √income) divided by the sum of the existing 8 weights. The existing regions are unchanged:
   the new region adds demand, it takes none.

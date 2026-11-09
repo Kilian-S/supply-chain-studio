@@ -6,7 +6,7 @@ review (`review-truth-r1.md`). No frontend exists for this model and no `card.js
 
 Read in this order. This file (what was built, how, and what came out), `review-truth-r1.md` (the
 independent review and its findings, all addressed below), `PROPOSAL.md` (the question, sections 1 to 4,
-the agreed model design in section 6a, the draft storyline in section 10), `ML_ROADMAP.md` section H.
+the agreed model design in section 6a, the draft storyline in section 10), `docs/ML_ROADMAP.md` section H.
 
 The question. Before a planner commits to a network (which FCs open, what each lists, at what service
 level), how many of next year's orders will ship in more than one parcel, and which orders and SKUs?

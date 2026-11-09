@@ -5,7 +5,7 @@ the cloud session on branch `claude/relaxed-brahmagupta-qd6agt` (started from mo
 `claude/festive-johnson-bl41d7`). No frontend exists for this model and no `card.json` is written.
 
 Read in this order. This file (what was built and how), `PROPOSAL.md` (the agreed design, sections 4a,
-8, 10 and 13 in particular), `ML_ROADMAP.md` section C (decisions in one place).
+8, 10 and 13 in particular), `docs/ML_ROADMAP.md` section C (decisions in one place).
 
 ---
 

@@ -1,6 +1,6 @@
 # Bought together, AI-slop review, round 1
 
-Spec reviewed is `STORYLINE.md` against `design/SLOP_CHECKLIST.md`, with the exemptions in its conflicts section applied. Numbers and method are out of scope. The "Why this screen" lines are treated as internal notes, not visible text (see the notes below the table).
+Spec reviewed is `STORYLINE.md` against `docs/design/SLOP_CHECKLIST.md`, with the exemptions in its conflicts section applied. Numbers and method are out of scope. The "Why this screen" lines are treated as internal notes, not visible text (see the notes below the table).
 
 Mechanical checks with no hits are the em dash and en dash characters, the AI vocabulary list (zero on every screen), marketing words, copula avoidance, signposting, wrap-ups, vague attribution, chatbot residue, emoji, kickers above titles and Title Case. The minus signs in the screen 7 figures are U+2212, which is correct.
 

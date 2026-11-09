@@ -1,4 +1,4 @@
-// Visible wording of the Bought together page (design/bought-together/STORYLINE.md). Every string the
+// Visible wording of the Bought together page (docs/design/bought-together/STORYLINE.md). Every string the
 // page shows lives here. Templates take values already formatted as strings. Inline formulas are
 // written \( ... \) and block formulas \[ ... \] inside the text; the page renders them with KaTeX.
 // Strings under a `drawer` key appear only inside the "How it works" drawers; lexicon.test.ts checks

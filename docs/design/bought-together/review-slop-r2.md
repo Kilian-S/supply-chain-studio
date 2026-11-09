@@ -1,6 +1,6 @@
 # Bought together, AI-slop review, round 2
 
-Spec reviewed is the revised `STORYLINE.md` (lines 1 to 296, the change log excluded) against `design/SLOP_CHECKLIST.md`, with every exemption in its conflicts section applied, including Kilian's Gate 0 decision (equal number boxes, bare-label boxes, 12 to 14 px text and series colour dots are allowed). Numbers and method are out of scope. The "Why this screen" and "States" lines are treated as internal notes.
+Spec reviewed is the revised `STORYLINE.md` (lines 1 to 296, the change log excluded) against `docs/design/SLOP_CHECKLIST.md`, with every exemption in its conflicts section applied, including Kilian's Gate 0 decision (equal number boxes, bare-label boxes, 12 to 14 px text and series colour dots are allowed). Numbers and method are out of scope. The "Why this screen" and "States" lines are treated as internal notes.
 
 Mechanical checks with no hits are the em dash and en dash characters, the AI vocabulary list (zero on every screen), marketing words, copula avoidance, forced contrast patterns in visible text, hollow "-ing" tails, signposting, wrap-ups, vague attribution, chatbot residue, emoji, kickers above titles, Title Case and colons in prose. The word "basket" survives only inside the field name `G.nodes[].baskets`.
 

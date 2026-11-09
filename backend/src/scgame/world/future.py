@@ -1,7 +1,7 @@
 """World v1, years 6 to 10: the future the demand forecast is tested on.
 
 Years 1 to 5 (`generator.py`) are left untouched. Years 6 to 10 follow the same rules, with three
-additions fixed before any forecasting model was fitted (`design/demand-forecast/PROPOSAL.md`, section 2).
+additions fixed before any forecasting model was fitted (`docs/design/demand-forecast/PROPOSAL.md`, section 2).
 
 - New SKUs launch at the average rate of years 1 to 5 (37 launches in five years), drawn with the original
   category sizes, type mix and parameter ranges, ids from 301.

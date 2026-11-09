@@ -90,7 +90,7 @@ section 7 note on why the replay overpredicts.
 ### 2. The business-check advantage over the replay is within noise (Major)
 
 **What is wrong.** Section 6 and "What it means" say gradient boosting "estimates a network's split rate
-better than the replay simulation" (0.68 against 0.92 points, about $600 a year), and `ML_ROADMAP.md`
+better than the replay simulation" (0.68 against 0.92 points, about $600 a year), and `docs/ML_ROADMAP.md`
 repeats "within 0.7 points against 0.9 for the replay". No interval is given, the 35 candidates are not
 independent (15 of them share three site sets), and the difference is not resolved.
 
@@ -113,7 +113,7 @@ distinguish from zero.
 
 **Suggested fix.** Report the cluster bootstrap interval beside the three mean absolute errors and word
 the result as "no clear difference from the replay in estimating a network's split rate; both are far
-better than the rule". Keep the $ figures only with their interval. Update `ML_ROADMAP.md` section H.
+better than the rule". Keep the $ figures only with their interval. Update `docs/ML_ROADMAP.md` section H.
 
 ### 3. The "-3.8%" SKU total is mostly the overall underprediction (Minor)
 
@@ -160,7 +160,7 @@ and limits of the model, which this check does not separate".
 **What is wrong.** "What it means" says the classifier is "the best of the four on every order-level
 score". It is not best on expected calibration error (logistic 0.491% against 0.498%) or on prediction bias
 (rule +0.10 points, logistic -0.46, gradient boosting -0.50). Two numbers are mis-rounded. The logistic
-test log loss is 0.24549, which is 0.245, not 0.246 (also in `ML_ROADMAP.md`), and the rule's average
+test log loss is 0.24549, which is 0.245, not 0.246 (also in `docs/ML_ROADMAP.md`), and the rule's average
 precision is 0.59248, which is 0.592, not 0.593.
 
 **Evidence.** `O.test.methods.<m>` values printed in full during the review.
@@ -195,7 +195,7 @@ calibration is good (below 0.3 and above 0.8, where most orders are) and where i
 **What is wrong.** Decision 4 agreed the features of `PROPOSAL.md` section 5. The build adds
 `n_listed_elsewhere` (the strongest input by SHAP, 0.78) and `some_not_all` (the rule's flag, second at
 0.67), and reduces the stock-risk features for unlisted SKUs from the full set ("the same for the unlisted
-SKUs at the FC they would come from") to `cover_min_central` and `growth_max_central`. `ML_ROADMAP.md`
+SKUs at the FC they would come from") to `cover_min_central` and `growth_max_central`. `docs/ML_ROADMAP.md`
 "Decided while working alone" does not list these changes. `CLAUDE.md` asks that each model's exact
 implementation is agreed before it is built.
 

@@ -5,7 +5,7 @@ the cloud session on branch `claude/festive-johnson-bl41d7`. No frontend exists 
 `card.json` is written; Kilian asked to stop before the page.
 
 Read in this order. This file (what was built and how), `RESULTS.md` (results, disclosures, open
-questions), `PROPOSAL.md` (the agreed design, sections 2 and 4a in particular), `ML_ROADMAP.md` section B
+questions), `PROPOSAL.md` (the agreed design, sections 2 and 4a in particular), `docs/ML_ROADMAP.md` section B
 (decisions in one place).
 
 ---

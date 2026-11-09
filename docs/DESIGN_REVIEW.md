@@ -205,9 +205,9 @@ context goes in captions rather than labels) are included.
 ## Bought together: built by an agent loop (2026-11-01)
 
 - **Process.** A storyline writer, three critics (rules, truth, AI-slop checklist from web research,
-  `design/SLOP_CHECKLIST.md`), a builder and a visual reviewer, with the orchestrator deciding Gates 1
+  `docs/design/SLOP_CHECKLIST.md`), a builder and a visual reviewer, with the orchestrator deciding Gates 1
   and 2 on Kilian's instruction to work autonomously. Specs and every review are in
-  `design/bought-together/`.
+  `docs/design/bought-together/`.
 - **What the critics caught.** Truth: a confounder in the chance baseline (region, basket size, then
   quarter), a capacity loophole (best sellers piled into one FC), an unfair baseline setting, and two
   choices not made purely on the validation set, now disclosed on the page. Rules: editorial titles,
@@ -243,7 +243,7 @@ with independent critics, disclosure and a list of decisions to revisit (rule 13
 
 - **Process.** Storyline written by the orchestrator, one combined critic (rules, truth, slop), two
   rounds of the storyline, built locally, one combined visual and slop review, one fix round. Specs and
-  reviews in `design/demand-forecast/`.
+  reviews in `docs/design/demand-forecast/`.
 - **What the critics caught.** The reversal's horizon stated three ways; "mean forecast error" read as
   bias; calibration bars that hid that 100% inside means a band far too wide, against a ground truth
   conditional on one simulation; a capacity result that reverses in simulation 2; late and incomplete

@@ -5,7 +5,7 @@ For the session that reviews the model and designs the page. Written 5 November 
 written.
 
 Read in this order. This file (what was built, how, and what came out), `PROPOSAL.md` (the decision, the
-formulation in section 5, Kilian's decisions in section 14), `ML_ROADMAP.md` section O.
+formulation in section 5, Kilian's decisions in section 14), `docs/ML_ROADMAP.md` section O.
 
 The question. Where should the shop open or expand FCs over the next five years, and by how much?
 

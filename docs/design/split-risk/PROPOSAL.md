@@ -1,6 +1,6 @@
 # Split orders, implementation proposal
 
-Model H from `ML_ROADMAP.md`. Written 3 November 2026. Kilian asked the same day for a first-principles
+Model H from `docs/ML_ROADMAP.md`. Written 3 November 2026. Kilian asked the same day for a first-principles
 explanation of the models and their design choices, agreed every design choice (section 6a, which
 includes two changes to this proposal) and asked for the model to be built. The page (sections 10 and
 11, decisions 9 to 11) is not yet decided.
@@ -292,7 +292,7 @@ logistic regression, gradient boosting (approved for model B), probability, log 
 precision, recall, precision-recall curve, average precision, reliability diagram, SHAP value, replay
 simulation, regret.
 
-Drawer only (to add to `GLOSSARY.md`). Isotonic regression, Platt scaling, expected calibration error,
+Drawer only (to add to `docs/GLOSSARY.md`). Isotonic regression, Platt scaling, expected calibration error,
 cross-fitting, proper scoring rule.
 
 ## 12. Build plan after approval
@@ -303,7 +303,7 @@ cross-fitting, proper scoring rule.
    tests for leakage (nothing from the scored year) and coherence (SKU risks add up to order risks).
 3. Outputs in `data/models/split-risk/`, no `card.json`. One independent review of leakage, fairness of
    baselines, choices on validation only and out-of-sample calibration, then
-   `design/split-risk/HANDOVER.md`.
+   `docs/design/split-risk/HANDOVER.md`.
 
 Estimated runtime about 20 minutes (100 networks simulated in about 3 seconds each, the replay runs,
 2.4 million training rows).

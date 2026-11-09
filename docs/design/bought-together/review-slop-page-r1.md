@@ -1,6 +1,6 @@
 # Bought together, AI-slop review of the built page, round 1
 
-Reviewed the page at `#/models/product-affinity` against `design/SLOP_CHECKLIST.md`, with every exemption in its conflicts section applied, including Kilian's Gate 0 decision. Wording was checked in `frontend/src/models/affinity/copy.ts` (all surface and drawer strings, templates included). The design was checked in the final, drawer and interaction screenshots and in `showcase.css`, `styles.css`, `PairMatrix.tsx`, `Scatter.tsx`, `LineChart.tsx`, `Projector.tsx`, `FcColumns.tsx` and `motion.ts`. Numbers and method are out of scope.
+Reviewed the page at `#/models/product-affinity` against `docs/design/SLOP_CHECKLIST.md`, with every exemption in its conflicts section applied, including Kilian's Gate 0 decision. Wording was checked in `frontend/src/models/affinity/copy.ts` (all surface and drawer strings, templates included). The design was checked in the final, drawer and interaction screenshots and in `showcase.css`, `styles.css`, `PairMatrix.tsx`, `Scatter.tsx`, `LineChart.tsx`, `Projector.tsx`, `FcColumns.tsx` and `motion.ts`. Numbers and method are out of scope.
 
 Mechanical checks with no hits are the em dash and en dash characters, the AI vocabulary list, marketing words, copula avoidance, forced contrast, hollow "-ing" tails (the one participle, "filling FC 1, then FC 2", states a fact), signposting, wrap-ups, vague attribution, chatbot residue, placeholders, emoji, Title Case and colons in prose. No page string sits outside `copy.ts`.
 

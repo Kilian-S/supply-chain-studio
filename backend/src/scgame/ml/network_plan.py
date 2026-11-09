@@ -2,8 +2,8 @@
 
 Usage: uv run python -m scgame.ml.network_plan <world dir> <models dir> <output dir>
 
-The design agreed with Kilian is in design/network-plan/PROPOSAL.md (sections 1 to 9, decisions in section
-14); design/network-plan/HANDOVER.md describes the run.
+The design agreed with Kilian is in docs/design/network-plan/PROPOSAL.md (sections 1 to 9, decisions in section
+14); docs/design/network-plan/HANDOVER.md describes the run.
 
   1. Demand paths. Model B's test paths for the 8 regions (`network_paths.write_b_paths`, read from
      b_paths.npz), and for three new markets model C's log-linear index refitted on years 1 to 5, scaled month
@@ -24,7 +24,7 @@ The design agreed with Kilian is in design/network-plan/PROPOSAL.md (sections 1 
 from __future__ import annotations
 
 # The programme builder keeps the formulation's symbols (sites I and J, open O, capacity K) and its compact
-# row-by-row constraint lists, so it reads against design/network-plan/HANDOVER.md.
+# row-by-row constraint lists, so it reads against docs/design/network-plan/HANDOVER.md.
 # ruff: noqa: E741, E743, E702
 
 import json

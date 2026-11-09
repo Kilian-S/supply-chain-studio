@@ -1,7 +1,7 @@
 [project]
 name = "scgame"
 version = "0.1.0"
-description = "Supply chain game simulation engine"
+description = "Supply Chain Studio backend, the simulator and the models"
 authors = [
     { name = "Kilian-S", email = "kxs25@ic.ac.uk" }
 ]
