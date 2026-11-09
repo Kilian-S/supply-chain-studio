@@ -8,8 +8,6 @@ research models for the long-term decisions a network planner faces. Replaying a
 decisions of a real run of the classroom game behind its rules, the simulator ends 1.6% from the
 live final cash of $25.95M.
 
-*Portfolio project in operations research and machine learning, 2026.*
-
 The simulator runs a producer's factories and warehouses across five regions, day by day, and a
 scenario designer sets every cost, lead time and event. The models take on questions the game cannot ask with its single product, such as which SKUs to stock
 alike, which to store together and how much each region will sell over five years.
