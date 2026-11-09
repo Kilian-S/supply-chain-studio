@@ -1,39 +1,51 @@
 # Supply Chain Studio
 
+[![Python](https://img.shields.io/badge/python-3.13%2B-blue.svg)](https://www.python.org/downloads/)
+[![Tests](https://img.shields.io/badge/tests-228%20passing-brightgreen.svg)](./backend/tests)
+
 A discrete-event simulator of a multi-region supply network, with machine learning and operations
-research models for the long-term questions a network planner faces. Replaying all 1,770
+research models for the long-term decisions a network planner faces. Replaying all 1,770
 decisions of a real run of the classroom game behind its rules, the simulator ends 1.6% from the
-live final cash of $25.95M. The models run on a generated online shop whose hidden structure is
-known, so each one is scored against the ground truth.
+live final cash of $25.95M.
+
+*Portfolio project in operations research and machine learning, 2026.*
+
+The simulator runs a producer's factories and warehouses across five regions, day by day, and a
+scenario designer sets every cost, lead time and event. The models take on questions the game cannot ask with its single product, such as which SKUs to stock
+alike, which to store together and how much each region will sell over five years.
+
+The models run on a generated online shop whose hidden structure is known, so each one is scored
+against the ground truth as well as against the simple rules a planner would otherwise use.
+Settings are chosen on a validation set and results come from a held-out test set.
 
 <img src="docs/screenshots/simulator-network.png" alt="The simulator on day 1,201 of the replayed run" width="100%">
 
-## Status
+---
 
-**Done**
+## Contents
 
-- Simulator and scenario designer, checked against a real run
-- Product clustering
-- Bought together
-- Demand five years out
+- [Simulator](#simulator)
+  - [Replay of the live game](#replay-of-the-live-game)
+  - [Scenario designer](#scenario-designer)
+- [Models](#models)
+  - [Product clustering](#product-clustering)
+  - [Bought together](#bought-together)
+  - [Demand five years out](#demand-five-years-out)
+- [Roadmap](#roadmap)
+- [Quick start](#quick-start)
+- [Layout](#layout)
+- [About](#about)
 
-**In progress**
+---
 
-- Demand in a new region, risk of split orders and a five-year network plan (models built, pages
-  next)
-
-**Planned**
-
-- Instant what-if, a surrogate of the simulator
-
-## The simulator
+## Simulator
 
 Two years of play across five regions, simulated day by day. Players set factory capacity, which
 factory supplies which warehouse, order points and quantities, truck or mail, which warehouse
 serves each market and the fulfilment policy, and try to finish with the most cash. The engine is
 new code, an event-driven simulation in Python behind a FastAPI service and a React front end.
 
-## Replay of the live game
+### Replay of the live game
 
 The rules follow The Supply Chain Game, a classroom simulation by Responsive Learning
 Technologies. My team won its network round during my MSc (first of ten teams, 96.88% fill rate),
@@ -51,7 +63,7 @@ the run ends 1.6% from the live result.
 cd backend && uv run python verification/run3_history_replay.py
 ```
 
-## Scenarios and the designer
+### Scenario designer
 
 Nine standard scenarios range from the classic network to a demand shock, a factory fire and a
 storm that cuts off the island. The designer edits costs, prices and lead times and places events
@@ -62,11 +74,9 @@ fall in every region from day 1,096.
 
 ## Models
 
-The game has a single product, so the studio generates its own world, an online shop with 300
-SKUs in eight categories and 30,000 customers in eight regions, with five years of orders (ten for
-the forecast). Its hidden structure includes each SKU's demand type and the bundles customers buy
-together. Settings are chosen on a validation set, and results come from a held-out test set,
-compared with the ground truth and with the rules a planner would otherwise use.
+The shop has 300 SKUs in eight categories and 30,000 customers in eight regions, with five years
+of orders (ten for the forecast). Its hidden structure includes each SKU's demand type and the
+bundles customers buy together.
 
 ### Product clustering
 
@@ -121,12 +131,13 @@ and every change made after test scores were seen.
 
 ## Roadmap
 
-- **Demand in a new region.** A regression on region traits for markets with no history.
-- **Risk of split orders.** A calibrated gradient-boosted classifier for orders and SKUs under a
-  planned network.
-- **Network plan.** A multi-period mixed-integer programme for where to open or expand FCs over
-  five years.
-- **Instant what-if.** A surrogate of the simulator that answers in milliseconds.
+- **Demand in a new region** (model built, page next). A regression on region traits for markets
+  with no history.
+- **Risk of split orders** (model built, page next). A calibrated gradient-boosted classifier for
+  orders and SKUs under a planned network.
+- **Network plan** (model built, page next). A multi-period mixed-integer programme for where to
+  open or expand FCs over five years.
+- **Instant what-if** (planned). A surrogate of the simulator that answers in milliseconds.
 
 ## Quick start
 
@@ -148,14 +159,12 @@ uv run python -m scgame.world.generator ../data/world_v1 7
 uv run python -m scgame.ml.sku_segmentation ../data/world_v1 ../data/models/sku-segmentation
 ```
 
-## Tests
+The 228 Python tests cover every engine rule, the API, the replay of the live game and each model.
 
 ```bash
 (cd backend && uv run pytest && uv run ruff check src)
 (cd frontend && npx tsc --noEmit -p tsconfig.app.json && npx eslint src/models && npx vitest run)
 ```
-
-228 Python tests cover every engine rule, the API, the replay of the live game and each model.
 
 ## Layout
 
