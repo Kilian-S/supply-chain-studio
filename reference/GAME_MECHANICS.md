@@ -2,8 +2,8 @@
 
 Summary of the mechanics of the Supply Chain Game (developed at Kellogg, Northwestern, and published by
 Responsive Learning Technologies). Written in our own words from
-the course documents in `original_game/`, our G4 simulator code and the saved page snapshots. The
-original's text, artwork and names are not reused in the app.
+the course documents, our G4 simulator code and the saved page snapshots. The original's text and
+artwork are not reused in the app, but its region names are.
 
 ## World
 - One product (drums of an industrial chemical). Four continental regions and one island.
@@ -93,7 +93,8 @@ notes override these. Our app makes every cost a scenario parameter.
 ## Engine verification (October 2026)
 Replaying all 1,770 real decisions at their exact times on the real demand
 (`backend/verification/run3_history_replay.py`, regression test `tests/test_run3_replay.py`):
-- every decision accepted; cash within $1k of the live game on almost every day up to day 800;
+- every decision accepted; cash within $6k of the live game on almost every day up to day 800 in
+  each of ten seeds (within $1k in eight of them; live cash is reported in thousands);
 - final cash $26.38M vs $25.95M live (+1.6%, five seeds, sd $33k); capacity spend within $842;
 - remaining gap: order times within a day are random in our rebuild, so batches and big orders
   shift by a day; the replayed order points then meet slightly different stock levels, and the
