@@ -65,9 +65,9 @@ CLASSIC_LANES = {
 }
 
 # Values the live game actually charged (factory page; confirmed by replaying the G4 bot, which lands
-# within 3% of our real final cash). The Imperial course notes listed different numbers.
+# within 3% of our real final cash). The printed course notes listed different numbers.
 LIVE_ECONOMICS = Economics(batch_fixed_cost=1500, unit_cost=1000, holding_cost_per_drum_year=100)
-IMPERIAL_NOTES_ECONOMICS = Economics(batch_fixed_cost=2000, unit_cost=900, holding_cost_per_drum_year=90)
+ALT_ECONOMICS = Economics(batch_fixed_cost=2000, unit_cost=900, holding_cost_per_drum_year=90)
 
 DEFAULT_ROUTE = RouteSettings(order_point=500, quantity=250, mode="truck", priority=0)
 
@@ -129,15 +129,14 @@ def _variant(base: Scenario, id_: str, name: str, description: str, *events: Eve
 def standard_scenarios(csv: str) -> list[Scenario]:
     classic = classic_network(
         csv, LIVE_ECONOMICS, "classic-network", "Classic network",
-        "Five regions, one factory and warehouse in Calopeia at the start, as in the Imperial 2026 "
-        "network run, with the costs the live game charged.",
+        "Five regions, with one factory and one warehouse in Calopeia at the start.",
     )
     scenarios = [
         classic,
         classic_network(
-            csv, IMPERIAL_NOTES_ECONOMICS, "classic-network-imperial-notes", "Classic network (course notes costs)",
-            "As the classic network, with the production and holding costs printed in the Imperial course "
-            "notes ($2,000 + $900 per drum, $90 holding), which differ from what the live game charged.",
+            csv, ALT_ECONOMICS, "classic-network-alt-costs", "Classic network (alternative costs)",
+            "As the classic network, with a higher fixed cost per batch and lower unit and holding costs "
+            "($2,000 + $900 per drum, $90 holding).",
         ),
         one_region(csv),
         _variant(

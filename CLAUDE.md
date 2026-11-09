@@ -1,8 +1,8 @@
 # Supply Chain Studio, project instructions
 
 Portfolio project in operations research and machine learning.
-It has three pillars, a faithful clone of the Imperial Supply Chain Game with a better interface and a
-scenario designer, the G4 autonomous bots, and the core, ML and OR models for long-term (strategic)
+It has three pillars, a discrete-event simulator of a multi-region supply network with a scenario
+designer, the G4 autonomous bots, and the core, ML and OR models for long-term (strategic)
 supply chain decisions in a simulated multi-product shop. Read `HANDOVER.md` first for the current
 state and open items, `ML_ROADMAP.md` for the models, and `DESIGN_REVIEW.md` for every design comment
 Kilian has made and the rules distilled from them.

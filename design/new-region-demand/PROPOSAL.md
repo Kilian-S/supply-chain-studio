@@ -30,8 +30,8 @@ similar traits buy.
 we, given only its features and the history of the existing regions?
 
 **Uses.** Sizing the new region's FC before opening (the business check, section 9), ranking candidate
-regions for entry, and demand inputs with uncertainty for network design (O). For an online retailer this is the
-country-entry question, with about thirty markets to learn from and every new one different.
+regions for entry, and demand inputs with uncertainty for network design (O). For an online retailer this
+is the country-entry question, with many markets to learn from and every new one different.
 
 **Recommendation.** Card "Demand in a new region", question "How much will a region sell before its
 first order?".

@@ -140,7 +140,7 @@ def list_scenarios() -> list[dict[str, Any]]:
                     "regions": len(sc.regions), "events": len(sc.events),
                     "start_day": sc.timeline.start_day, "end_day": sc.timeline.end_day})
     # Standard scenarios first, in library order; then the user's own, by name.
-    order = {"classic-network": 0, "classic-one-region": 1, "classic-network-imperial-notes": 2}
+    order = {"classic-network": 0, "classic-one-region": 1, "classic-network-alt-costs": 2}
     return sorted(out, key=lambda s: (not s["standard"], order.get(s["id"], 9), s["name"]))
 
 

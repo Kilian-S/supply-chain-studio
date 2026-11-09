@@ -20,7 +20,7 @@ setting exists yet that those figures could inform.
 
 At the end of year 5 the shop commits a five-year build plan. It says in which regions to open an FC, in which
 year, and how much capacity (units per month) every FC has in each of years 6 to 10. This is the strategic question
-an operations research team answers before a lease is signed, and the one models B (demand of the
+an operations research team at an online retailer answers before a lease is signed, and the one models B (demand of the
 existing regions) and C (demand of regions the shop has never served) were built to feed.
 
 | Item | Proposal |

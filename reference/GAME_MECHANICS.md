@@ -1,7 +1,7 @@
 # Original game mechanics (our own summary)
 
-Summary of the mechanics of the Supply Chain Game (developed at Kellogg, Northwestern; published by
-Responsive Learning Technologies; run at Imperial as CIVE70108 in 2026). Written in our own words from
+Summary of the mechanics of the Supply Chain Game (developed at Kellogg, Northwestern, and published by
+Responsive Learning Technologies). Written in our own words from
 the course documents in `original_game/`, our G4 simulator code and the saved page snapshots. The
 original's text, artwork and names are not reused in the app.
 
@@ -25,7 +25,7 @@ original's text, artwork and names are not reused in the app.
 | Lumpy fixed-size | Customer reorders a fixed 250 units at random times (customer's own reorder point) |
 | Island ramp | Like ramp then stable, on the island |
 
-## Costs (Imperial 2026 values; the generic description differs, see note)
+## Costs (course notes values; the generic description differs, see note)
 | Item | Value |
 |---|---|
 | Price | $1,450 per drum |
@@ -36,7 +36,7 @@ original's text, artwork and names are not reused in the app.
 | New warehouse | $100,000; 60 days; unlimited storage |
 | Interest | 10% per year on cash, compounded daily |
 
-The generic game description uses $1,500 + $1,000 per drum production and $100 holding; the Imperial
+The generic game description uses $1,500 + $1,000 per drum production and $100 holding; the course
 notes override these. Our app makes every cost a scenario parameter.
 
 ## Transport (factory to warehouse) and fulfilment (warehouse to customer)
@@ -68,7 +68,7 @@ notes override these. Our app makes every cost a scenario parameter.
 - Changing order point and quantity together is order-dependent in the original (a known pain point).
 - "Nearest" fulfilment waits for stock en route to the nearest warehouse if it arrives within the
   one-day window; "soonest" ships from whichever warehouse can deliver first.
-- The live factory page states $1,500 + $1,000 per drum production cost; the Imperial notes say
+- The live factory page states $1,500 + $1,000 per drum production cost; the course notes say
   $2,000 + $900. **Confirmed: the live game charged $1,500 + $1,000 and $100 holding.** Replaying the
   G4 bot in our engine gives $26.8M with these values (live result $25.95M) and $39.4M with the notes'
   values.

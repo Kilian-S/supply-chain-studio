@@ -1,4 +1,4 @@
-# Supply Chain Game Studio (working title)
+# Supply Chain Studio
 
 Plan, last updated 27 October 2026. Status: engine verified against the live game; web app with play mode and scenario designer built; generated worlds, forecasting and optimisation to come.
 
@@ -8,13 +8,14 @@ A portfolio project in operations research. It must show,
 live on a screen share, that Kilian can take a strategic supply chain question, build the model behind
 it, and present a clear answer to senior decision makers.
 
-It is a reimagined, expanded version of the Supply Chain Game played at Imperial (CIVE70108, 2026),
-which Group 4 won in the network round (1st of 10, 96.88% fill rate). The original game was developed
-at Kellogg and is published by Responsive Learning Technologies; see `reference/GAME_MECHANICS.md`.
+The simulator follows the rules of The Supply Chain Game, a classroom simulation developed at Kellogg
+and published by Responsive Learning Technologies, which our team (G4) won in the network round (1st of
+10, 96.88% fill rate). Engine, interface, scenario designer and models are new. The rules are summarised
+in `reference/GAME_MECHANICS.md`.
 
-Strategic questions for senior decision makers drive the design (for example, how
-expanding one FC changes the share of orders it can fulfil on its own). The app is therefore built
-around scenarios and what-if comparison, not only around playing the game.
+Strategic questions for senior decision makers drive the design (for example, how expanding one FC
+changes the share of orders it can fulfil on its own). The app is therefore built around scenarios and
+what-if comparison, not only around playing the game.
 
 ## 2. Decisions made
 
@@ -83,7 +84,7 @@ or **surprise** (appears as a news item on the day it happens). All four event f
 cost and price, disruptions, market and lifecycle) are in the first version.
 
 ### 4.3 Standard scenario library
-1. **Imperial 2026 network run**: costs from the Imperial notes, Run 3 starting state.
+1. **Alternative costs**: costs from the printed course notes, Run 3 starting state.
 2. **Original defaults**: the generic game values ($1,500 + $1,000 production, $100 holding).
 3. **One region**: home region only, as in the single-region stage.
 4. **Demand shock**: after one year in play, demand falls 30% everywhere.
@@ -128,7 +129,7 @@ Scenarios are saved as JSON files; users can duplicate a standard scenario and e
 ## 8. Architecture
 
 ```
-imperial supply chain game/
+supply-chain-studio/
   backend/            FastAPI app
     sim/              simulation engine
     scenario/         schema, standard library, procedural generator

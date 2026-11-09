@@ -5,7 +5,7 @@ selected item is discussed in detail before it is built.
 
 ## 1. What the demo shows
 
-1. **Reverse engineering of the Imperial supply chain game**, including scenario set-up and the
+1. **Reverse engineering of a classroom supply chain game**, including scenario set-up and the
    event timeline. Done: engine verified against the live Run 3 data (see `reference/GAME_MECHANICS.md`).
 2. **Autonomous bots**: how the G4 bots played the game 24/7 on AWS, and how the strategy was
    tested in an offline simulator first.
@@ -14,7 +14,7 @@ selected item is discussed in detail before it is built.
    networks, and optimisation, aimed at questions an operations research team faces before
    they arise, not at day-to-day operations.
 
-The Imperial game is the foundation; the playground grows well beyond it.
+The classroom game is the foundation; the playground grows well beyond it.
 
 ## 2. Decisions
 
