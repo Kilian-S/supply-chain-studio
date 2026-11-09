@@ -44,7 +44,6 @@ interface Preset { level: Level; region: number; category: number; sku_id: numbe
 interface RegionSeries { level: Level; region: number; actual: number[]; test: Rows; truth_test: Rows; actual_second_future: number[]; truth_second_future: Rows }
 interface SeriesData { presets: Preset[]; regions: RegionSeries[] }
 interface Labels { regions: Record<string, string>; categories: string[]; skus: Record<string, string> }
-type Sim = 1 | 2
 
 // ---------------------------------------------------------------- formats
 const dec = (v: number, d = 0) => v.toLocaleString('en-GB', { minimumFractionDigits: d, maximumFractionDigits: d })
@@ -72,8 +71,6 @@ function Seg<T extends string | number>({ label, options, value, onChange, name 
     </div>
   )
 }
-const SimSeg = ({ sim, setSim }: { sim: Sim; setSim: (s: Sim) => void }) =>
-  <Seg label={C.testYears} options={[1, 2] as Sim[]} value={sim} onChange={setSim} name={C.simulation} />
 
 // The key under every fan, swatches drawn as in the chart.
 function FanKey({ truth = false }: { truth?: boolean }) {
@@ -269,22 +266,20 @@ function ValidationScreen({ o }: { o: Overview }) {
 }
 
 // ---------------------------------------------------------------- 5. five-year forecast
-function actualFor(r: RegionSeries, sim: Sim) {
-  return sim === 1 ? r.actual : [...r.actual.slice(0, 60), ...r.actual_second_future]
-}
+// The page shows one draw of the test years (the model's "second future"); the first draw is disclosed
+// in the data-split, WAPE and results drawers.
+const actual10 = (r: RegionSeries) => [...r.actual.slice(0, 60), ...r.actual_second_future]
 
 function ForecastScreen({ s, L }: { s: SeriesData; L: Labels }) {
   const [i, setI] = useState(0)
-  const [sim, setSim] = useState<Sim>(1)
   const r = s.regions[i]
   return (
     <Screen id="forecast" headline={C.forecast.headline}
       drawer={<Drawer><p>{C.forecast.drawer.read}</p><p>{C.forecast.drawer.growth}</p></Drawer>}>
       <div className="sc-controls">
         <Seg label={C.series} options={s.regions.map((_, k) => k)} value={i} onChange={setI} name={(k) => seriesName(s.regions[k], L)} />
-        <SimSeg sim={sim} setSim={setSim} />
       </div>
-      <Fan title={C.forecast.chartTitle(seriesName(r, L))} actual={actualFor(r, sim)} band={band(r.test, 61)} yLabel={C.forecast.yTitle} format={(v) => dec(v)} />
+      <Fan title={C.forecast.chartTitle(seriesName(r, L))} actual={actual10(r)} band={band(r.test, 61)} yLabel={C.forecast.yTitle} format={(v) => dec(v)} />
       <FanKey />
     </Screen>
   )
@@ -304,34 +299,33 @@ function leadYears(t: Record<Method, { table: Table }>) {
 
 function WapeScreen({ o }: { o: Overview }) {
   const [level, setLevel] = useState<Level>('Total')
-  const [sim, setSim] = useState<Sim>(1)
-  const t = sim === 1 ? o.test : o.second_future.test
-  const truth = sim === 1 ? o.truth.test : o.second_future.truth
+  const t = o.second_future.test
+  const truth = o.second_future.truth
   const series: Series[] = [
     ...METHODS.map((m) => ({ id: m, label: m, color: LINE_STYLE[m].color, dash: LINE_STYLE[m].dash, values: t[m].table[level].map((c) => c.wape_mean * 100) })),
     { id: 'truth', label: C.wape.truth, color: INK, dash: '1 3', values: truth[level].map((c) => c.wape_truth_mean * 100) },
   ]
   const learned: Method[] = ['LightGBM', 'Neural network']
-  const bestLearned = learned.reduce((a, b) => (o.test[b].score < o.test[a].score ? b : a))
-  const scores = METHODS.filter((m) => m !== 'Seasonal naive').map((m) => `${m} ${dec(o.test[m].score * 100, 1)}%`).join(', ')
+  const bestLearned = learned.reduce((a, b) => (t[b].score < t[a].score ? b : a))
+  const scores = METHODS.filter((m) => m !== 'Seasonal naive').map((m) => `${m} ${dec(t[m].score * 100, 1)}%`).join(', ')
   return (
     <Screen id="wape" headline={C.wape.headline}
       drawer={<Drawer>
-        <p>{C.wape.drawer.lead(yearsWord(leadYears(o.test)), yearsWord(leadYears(o.second_future.test)))}</p>
+        <p>{C.wape.drawer.lead(yearsWord(leadYears(t)))}</p>
         <p>{C.wape.drawer.unseen}</p>
         <p>{bestLearned === o.chosen ? C.wape.drawer.overallSame(scores) : C.wape.drawer.overall(scores, bestLearned)}</p>
+        <p>{C.wape.drawer.firstDraw(yearsWord(leadYears(o.test)))}</p>
         <p>{C.wape.drawer.truthLine}</p>
         <h4>{C.wape.drawer.skuTitle}</h4>
         <div className="table-wrap" style={{ maxWidth: 560 }}>
           <table className="grid">
             <thead><tr><th>{C.wape.drawer.colMethod}</th>{(['SKU', 'Region × SKU'] as Level[]).flatMap((lv) => [1, 2].map((y) => <th key={lv + y} className="num">{lv}, {C.wape.drawer.colYear(y)}</th>))}</tr></thead>
-            <tbody>{METHODS.map((m) => <tr key={m}><td>{m}</td>{(['SKU', 'Region × SKU'] as Level[]).flatMap((lv) => o.test[m].table[lv].map((c, j) => <td key={lv + j} className="num">{dec(c.wape_mean * 100, 1)}</td>))}</tr>)}</tbody>
+            <tbody>{METHODS.map((m) => <tr key={m}><td>{m}</td>{(['SKU', 'Region × SKU'] as Level[]).flatMap((lv) => t[m].table[lv].map((c, j) => <td key={lv + j} className="num">{dec(c.wape_mean * 100, 1)}</td>))}</tr>)}</tbody>
           </table>
         </div>
       </Drawer>}>
       <div className="sc-controls">
         <Seg label={C.level} options={UPPER} value={level} onChange={setLevel} name={String} />
-        <SimSeg sim={sim} setSim={setSim} />
       </div>
       <LineChart title={C.wape.chartTitle(level)} x={[1, 2, 3, 4, 5]} xLabel={C.wape.xTitle} yLabel={C.wape.yTitle} series={series} height={320}
         format={(v) => dec(v)} hideTitle hideToggle hideLegend endLabels endGroup={0.3} />
@@ -342,31 +336,28 @@ function WapeScreen({ o }: { o: Overview }) {
 // ---------------------------------------------------------------- 7. forecast versus ground truth
 function TruthScreen({ o, s, L }: { o: Overview; s: SeriesData; L: Labels }) {
   const [i, setI] = useState(0)
-  const [sim, setSim] = useState<Sim>(1)
   const r = s.regions[i]
   const lv: Level = r.region > 0 ? 'Region' : 'Total'
-  const t1 = o.truth.test[lv], t2 = o.second_future.truth[lv]
+  const rows = o.second_future.truth[lv]
   return (
     <Screen id="truth" headline={C.truth.headline}
       drawer={<Drawer>
         <p>{C.truth.drawer.reps}</p>
         <h4>{C.truth.drawer.tableTitle(lv === 'Total' ? C.truth.drawer.total : C.truth.drawer.regions)}</h4>
-        <div className="table-wrap">
+        <div className="table-wrap" style={{ maxWidth: 720 }}>
           <table className="grid">
-            <thead><tr><th>{C.truth.drawer.colYear}</th>{[1, 2].map((k) => <th key={k} className="num">{C.truth.drawer.colInside(k)}</th>)}{[1, 2].map((k) => <th key={k} className="num">{C.truth.drawer.colWidth(k)}</th>)}</tr></thead>
-            <tbody>{t1.map((c, j) => <tr key={j}><td>{j + 1}</td>
-              {[c, t2[j]].map((x, k) => <td key={k} className="num">{dec((x.truth_inside_our_p10_p90 ?? 0) * 100)}</td>)}
-              {[c, t2[j]].map((x, k) => <td key={k} className="num">{dec(x.true_p10_p90_width_vs_ours ?? 0, 2)}</td>)}</tr>)}</tbody>
+            <thead><tr><th>{C.truth.drawer.colYear}</th><th className="num">{C.truth.drawer.colInside}</th><th className="num">{C.truth.drawer.colWidth}</th></tr></thead>
+            <tbody>{rows.map((x, j) => <tr key={j}><td>{j + 1}</td><td className="num">{dec((x.truth_inside_our_p10_p90 ?? 0) * 100)}</td><td className="num">{dec(x.true_p10_p90_width_vs_ours ?? 0, 2)}</td></tr>)}</tbody>
           </table>
         </div>
+        <p>{C.truth.drawer.wide(dec(1 / Math.max(...rows.map((x) => x.true_p10_p90_width_vs_ours ?? 1))), dec(1 / Math.min(...rows.map((x) => x.true_p10_p90_width_vs_ours ?? 1))))}</p>
         <p>{C.truth.drawer.check}</p>
       </Drawer>}>
       <div className="sc-controls">
         <Seg label={C.series} options={s.regions.map((_, k) => k)} value={i} onChange={setI} name={(k) => seriesName(s.regions[k], L)} />
-        <SimSeg sim={sim} setSim={setSim} />
       </div>
-      <Fan title={C.truth.chartTitle(seriesName(r, L))} actual={actualFor(r, sim)} band={band(r.test, 61)}
-        reference={band(sim === 1 ? r.truth_test : r.truth_second_future, 61)} start={49} yLabel={C.forecast.yTitle} format={(v) => dec(v)} />
+      <Fan title={C.truth.chartTitle(seriesName(r, L))} actual={actual10(r)} band={band(r.test, 61)}
+        reference={band(r.truth_second_future, 61)} start={49} yLabel={C.forecast.yTitle} format={(v) => dec(v)} />
       <FanKey truth />
     </Screen>
   )
@@ -380,17 +371,17 @@ function atGame(c: Capacity) {
 const over = (c: Capacity, key: string, k: number) => c.curves[key].expected[k] / c.curves['Ground truth'].expected[k] - 1
 const cheapest = (c: Capacity) => {
   const k = atGame(c)
-  return PLANS.reduce((a, b) => (over(c, b.key, k) < over(c, a.key, k) ? b : a)).label
+  return PLANS.reduce((a, b) => (over(c, b.key, k) < over(c, a.key, k) ? b : a))
 }
 
 function ResultsScreen({ o, L }: { o: Overview; L: Labels }) {
-  const [sim, setSim] = useState<Sim>(1)
-  const cap = sim === 1 ? o.capacity : o.second_future.capacity
+  const cap = o.second_future.capacity
   const k = atGame(cap)
-  const ratios = [0.25, 0.5, 1, 2, 4].map((t) => o.capacity.rho.reduce((b, r, j) => (Math.abs(r - t) < Math.abs(o.capacity.rho[b] - t) ? j : b), 0))
-  const kGame = atGame(o.capacity)
-  const cols = [...ratios.slice(0, 2), kGame, ...ratios.slice(2)]
-  const regionPlans = PLANS.filter((p) => o.capacity.per_region[0]?.[p.key])
+  const ratios = [0.25, 0.5, 1, 2, 4].map((t) => cap.rho.reduce((b, r, j) => (Math.abs(r - t) < Math.abs(cap.rho[b] - t) ? j : b), 0))
+  const cols = [...ratios.slice(0, 2), k, ...ratios.slice(2)]
+  const regionPlans = PLANS.filter((p) => cap.per_region[0]?.[p.key])
+  const first = cheapest(o.capacity)
+  const k1 = atGame(o.capacity)
   return (
     <Screen id="results" headline={C.results.headline} caption={C.results.caption}
       drawer={<Drawer>
@@ -401,25 +392,25 @@ function ResultsScreen({ o, L }: { o: Overview; L: Labels }) {
             <tbody>{PLANS.map((p) => <tr key={p.key}><td style={{ whiteSpace: 'nowrap' }}>{p.label}</td><td>{p.rule}</td></tr>)}</tbody>
           </table>
         </div>
-        <p>{C.results.drawer.ranking(cheapest(o.capacity).toLowerCase(), cheapest(o.second_future.capacity))}</p>
+        <p>{C.results.drawer.ranking(cheapest(cap).label)}</p>
         <p>{C.results.drawer.ours}</p>
+        <p>{C.results.drawer.firstDraw(first.label.toLowerCase(), signed(over(o.capacity, 'Our forecast', k1)))}</p>
         <p>{C.results.drawer.flatters}</p>
         <h4>{C.results.drawer.ratioTitle}</h4>
         <div className="table-wrap">
           <table className="grid">
-            <thead><tr><th>{C.results.drawer.colPlan}</th>{cols.map((j) => <th key={j} className="num">{dec(o.capacity.rho[j], 2)}{j === kGame ? ` (${C.results.drawer.game})` : ''}</th>)}</tr></thead>
-            <tbody>{PLANS.map((p) => <tr key={p.key}><td style={{ whiteSpace: 'nowrap' }}>{p.label}</td>{cols.map((j) => <td key={j} className="num">{signed(over(o.capacity, p.key, j))}</td>)}</tr>)}</tbody>
+            <thead><tr><th>{C.results.drawer.colPlan}</th>{cols.map((j) => <th key={j} className="num">{dec(cap.rho[j], 2)}{j === k ? ` (${C.results.drawer.game})` : ''}</th>)}</tr></thead>
+            <tbody>{PLANS.map((p) => <tr key={p.key}><td style={{ whiteSpace: 'nowrap' }}>{p.label}</td>{cols.map((j) => <td key={j} className="num">{signed(over(cap, p.key, j))}</td>)}</tr>)}</tbody>
           </table>
         </div>
         <h4>{C.results.drawer.regionTitle}</h4>
         <div className="table-wrap">
           <table className="grid">
             <thead><tr><th>{C.results.drawer.colRegion}</th>{regionPlans.map((p) => <th key={p.key} className="num">{p.label}</th>)}</tr></thead>
-            <tbody>{o.capacity.per_region.map((row) => <tr key={row.region}><td>{L.regions[String(row.region)]}</td>{regionPlans.map((p) => <td key={p.key} className="num">{dec((row[p.key] as { capacity: number }).capacity)}</td>)}</tr>)}</tbody>
+            <tbody>{cap.per_region.map((row) => <tr key={row.region}><td>{L.regions[String(row.region)]}</td>{regionPlans.map((p) => <td key={p.key} className="num">{dec((row[p.key] as { capacity: number }).capacity)}</td>)}</tr>)}</tbody>
           </table>
         </div>
       </Drawer>}>
-      <div className="sc-controls"><SimSeg sim={sim} setSim={setSim} /></div>
       <Bars format={(v) => signed(v).replace('%', '')} rows={PLANS.map((p) => ({ label: p.label, value: over(cap, p.key, k), ours: p.key === 'Our forecast' }))} />
     </Screen>
   )
