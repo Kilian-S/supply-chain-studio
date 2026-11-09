@@ -1,9 +1,10 @@
 # Supply Chain Studio
 
-A discrete-event simulator of a multi-region supply network, and a set of machine learning and
-operations research models for the long-term questions a network planner faces. The simulator is
-checked against a real run of the classroom game its rules come from. Replaying all 1,770
-decisions of that run ends 1.6% from the live final cash of $25.95M.
+A discrete-event simulator of a multi-region supply network, with machine learning and operations
+research models for the long-term questions a network planner faces. Replaying all 1,770
+decisions of a real run of the classroom game behind its rules, the simulator ends 1.6% from the
+live final cash of $25.95M. The models run on a generated online shop whose hidden structure is
+known, so each one is scored against the ground truth.
 
 <img src="docs/screenshots/simulator-network.png" alt="The simulator on day 1,201 of the replayed run" width="100%">
 
@@ -29,18 +30,20 @@ decisions of that run ends 1.6% from the live final cash of $25.95M.
 
 Two years of play across five regions, simulated day by day. Players set factory capacity, which
 factory supplies which warehouse, order points and quantities, truck or mail, which warehouse
-serves each market and the fulfilment policy, and try to finish with the most cash. The
-event-driven engine is written from scratch in Python, with a test for every rule.
+serves each market and the fulfilment policy, and try to finish with the most cash. The engine is
+new code, an event-driven simulation in Python behind a FastAPI service and a React front end.
 
-## Checked against a real run
+## Replay of the live game
 
 The rules follow The Supply Chain Game, a classroom simulation by Responsive Learning
 Technologies. My team won its network round during my MSc (first of ten teams, 96.88% fill rate),
-largely with a bot we wrote to play around the clock, and the game's decision log became the test.
-Replayed at their exact times on the real demand, all 1,770 decisions are accepted. Cash stays
-within $6k of the live game on almost every day of the first ten weeks and ends 1.6% above it.
-The game does not export order times within a day, so the odd batch shifts by a day and the paths
-drift apart in the second year.
+and the game's log of our decisions became the test. Replayed at their exact times on the real
+demand, every decision is accepted.
+
+The game does not export when orders arrive within a day, so five random seeds stand in for it.
+Cash stays within $6k of the live game on 69 of the first 70 days. Batches and large orders that
+land a day early or late compound in the second year, when the paths drift up to $2.4M apart, and
+the run ends 1.6% from the live result.
 
 <img src="docs/screenshots/replay-cash.png" alt="Cash of the replay against the live game, with the gap below" width="100%">
 
@@ -52,45 +55,47 @@ cd backend && uv run python verification/run3_history_replay.py
 
 Nine standard scenarios range from the classic network to a demand shock, a factory fire and a
 storm that cuts off the island. The designer edits costs, prices and lead times and places events
-on a timeline, announced in advance or as surprises, and redraws demand and costs as you edit.
+on a timeline, announced in advance or as surprises. Below is the demand shock, a surprise 30%
+fall in every region from day 1,096.
 
-<img src="docs/screenshots/designer.png" alt="The scenario designer" width="100%">
+<img src="docs/screenshots/designer.png" alt="The scenario designer with the demand shock on the timeline" width="100%">
 
 ## Models
 
 The game has a single product, so the studio generates its own world, an online shop with 300
-SKUs, 30,000 customers in eight regions and five years of orders. Its hidden structure, such as
-each SKU's demand type and the bundles customers buy together, is known. Every model is therefore
-scored against the ground truth as well as against the rules a planner would otherwise use, with
-settings chosen on a validation set and results taken from a held-out test set.
-
-<img src="docs/screenshots/models-home.png" alt="The models page, with three finished models and four greyed out" width="100%">
+SKUs in eight categories and 30,000 customers in eight regions, with five years of orders (ten for
+the forecast). Its hidden structure includes each SKU's demand type and the bundles customers buy
+together. Settings are chosen on a validation set, and results come from a held-out test set,
+compared with the ground truth and with the rules a planner would otherwise use.
 
 ### Product clustering
 
 Which SKUs sell alike, so each cluster can get its own stocking policy? k-means and Gaussian
-mixtures group the SKUs on up to 16 features of demand, size, price and basket. The setting with
-the highest purity recovers the hidden demand types almost exactly.
+mixtures group the SKUs on up to 16 features of demand, size, price and basket. Picked with the
+ground truth in hand, the best setting reaches 98% purity against the hidden demand types, so the
+features can separate them.
 
 <img src="docs/screenshots/clustering-map.png" alt="SKUs in feature space at the highest-purity setting" width="100%">
 
-Chosen by stocking cost instead, nine k-means clusters cost $2.03M on the test year, against $2.14M for
-ABC/XYZ analysis and $2.19M for one policy for every SKU. Recovering the types and stocking
-cheaply turn out to be different goals.
+The setting chosen by stocking cost on the validation year (chart below) is nine k-means clusters
+with only 61% purity. On the test year it costs $2.03M, against $2.14M for ABC/XYZ analysis and
+$2.19M for one policy for every SKU.
 
-<img src="docs/screenshots/clustering-tradeoff.png" alt="Stocking cost against purity for every setting" width="100%">
+<img src="docs/screenshots/clustering-tradeoff.png" alt="Validation stocking cost against purity for every setting" width="100%">
 
 ### Bought together
 
-Which SKUs are bought together, so they should share an FC? Each pair's co-occurrences are
-compared with chance within region, basket size and quarter. A Poisson test with false discovery
-rate control keeps the linked pairs, and Louvain community detection groups them into 45
-communities, which recover all 45 bundles planted in the shop.
+Which SKUs are bought together, so they should be stored in the same fulfilment centre (FC)? Each
+pair's co-occurrences are compared with chance within the same region, basket size and quarter. A
+Poisson test with false discovery rate control keeps the linked pairs, and Louvain community
+detection groups them into 45 communities that match all 45 bundles planted in the shop. The
+quarter was added after a check against the ground truth, and without it 43 of the 45 match.
 
 <img src="docs/screenshots/affinity-network.png" alt="The network of linked pairs, coloured by community" width="100%">
 
-Stored together across two FCs, the communities split 34.7% of test-year orders, against 35.8%
-by category and 39.4% at random. The gain is modest because most baskets mix unrelated items.
+With the SKUs split over two FCs and each community kept in one, 34.7% of test-year orders are
+split between FCs, against 35.8% when SKUs are stored by category and 39.4% at random. Most
+baskets mix unrelated items, which caps the gain.
 
 <img src="docs/screenshots/affinity-results.png" alt="Split orders under each assignment rule" width="100%">
 
@@ -98,14 +103,19 @@ by category and 39.4% at random. The gain is modest because most baskets mix unr
 
 How much will each region and category sell over five years, and how sure are we? Seasonal naive,
 ETS, LightGBM and a small neural network forecast every level from the total down to each SKU in
-each region, with bands from 1,000 reconciled sample paths.
+each region, with bands from 1,000 sample paths that add up across levels.
 
 <img src="docs/screenshots/forecast-fan.png" alt="The five-year forecast of total demand against the actual" width="100%">
 
-At the total the learned models lead for three years, then ETS, which damps growth, catches up. As capacity
-plans, LightGBM costs 4.7% more than a plan built from the ground truth, the chosen neural network
-8.1% and rebuilding last year's peak 17.8%. On an earlier draw of the test years last year's peak
-was cheapest, and the page says so.
+At the total the learned models are the most accurate for three years, after which ETS, which
+damps growth, is closer. Used to size capacity for years 7 to 10, LightGBM costs 4.7% more than a
+plan built from the ground truth, seasonal naive 5.0%, ETS 5.6% and the neural network, chosen on
+the validation years, 8.1%. Building last year's peak again costs 17.8%, and the network's median
+alone, without its band, 19.8%.
+
+The test years shown are a second draw of years 6 to 10 under the same rules. On the first, where
+growth stopped altogether, last year's peak was the cheapest plan. The page discloses that draw
+and every change made after test scores were seen.
 
 <img src="docs/screenshots/forecast-results.png" alt="Capacity cost of each plan over the ground-truth plan" width="100%">
 
@@ -138,15 +148,14 @@ uv run python -m scgame.world.generator ../data/world_v1 7
 uv run python -m scgame.ml.sku_segmentation ../data/world_v1 ../data/models/sku-segmentation
 ```
 
-## Verification
+## Tests
 
 ```bash
 (cd backend && uv run pytest && uv run ruff check src)
 (cd frontend && npx tsc --noEmit -p tsconfig.app.json && npx eslint src/models && npx vitest run)
 ```
 
-228 Python tests cover every engine rule, the API, the replay of the real run and each model.
-Every visible string on the model pages is checked by a wording test.
+228 Python tests cover every engine rule, the API, the replay of the live game and each model.
 
 ## Layout
 
@@ -155,7 +164,7 @@ Every visible string on the model pages is checked by a wording test.
 | `backend/src/scgame/` | Engine, scenarios, demand, history import and the FastAPI app |
 | `backend/src/scgame/world/` | Generator of the simulated shop |
 | `backend/src/scgame/ml/` | The models and the simulations that price their decisions |
-| `backend/verification/` | Replays of the real run and the chart above |
+| `backend/verification/` | Replays of the live game and the cash chart above |
 | `frontend/` | React and TypeScript app with the simulator, designer and model pages |
 | `scenarios/` | Standard scenarios as JSON, plus the recorded demand |
 | `data/models/` | Model outputs read by the pages |
